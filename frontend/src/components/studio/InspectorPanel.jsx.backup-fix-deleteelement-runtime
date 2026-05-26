@@ -1,0 +1,277 @@
+import React from "react";
+import { Box, Image, SlidersHorizontal, Type } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
+function Section({ icon: Icon, title, children }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+      <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">
+        {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+        {title}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+        {label}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+function Row({ children }) {
+  return <div className="grid grid-cols-2 gap-2">{children}</div>;
+}
+
+export default function InspectorPanel({ selected, onUpdate, editing }) {
+  if (!editing) {
+    return (
+      <div className="p-4 text-sm text-zinc-500">
+        Enable <span className="font-semibold text-zinc-300">Edit</span> to inspect elements.
+      </div>
+    );
+  }
+
+  if (!selected) {
+    return (
+      <div className="p-4 text-sm text-zinc-500">
+        Click any element in the preview to edit it.
+      </div>
+    );
+  }
+
+  const styles = selected.styles || {};
+
+  const patchText = (text) => onUpdate(selected.id, { text });
+  const patchMediaUrl = (mediaUrl) => onUpdate(selected.id, { mediaUrl });
+  const patchClasses = (classes) => onUpdate(selected.id, { classes });
+  const normalizeCssValue = (key, value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+
+    const pxKeys = new Set([
+      "width",
+      "height",
+      "minHeight",
+      "maxWidth",
+      "padding",
+      "margin",
+      "borderRadius",
+      "gap",
+      "fontSize",
+      "letterSpacing",
+    ]);
+
+    if (pxKeys.has(key) && /^-?\\d+(\\.\\d+)?$/.test(raw)) {
+      return `${raw}px`;
+    }
+
+    return raw;
+  };
+
+  const patchStyle = (key, value) => {
+    const layoutKeys = new Set([
+      "width",
+      "height",
+      "minHeight",
+      "maxWidth",
+      "padding",
+      "margin",
+      "borderRadius",
+      "gap",
+      "gridTemplateColumns",
+    ]);
+
+    const normalized = normalizeCssValue(key, value);
+    const styles = { [key]: normalized };
+
+    if (layoutKeys.has(key) && !selected.styles?.display) {
+      styles.display = "inline-block";
+    }
+
+    onUpdate(selected.id, { styles });
+  };
+
+  const inputClass = "h-8 border-zinc-800 bg-zinc-900 text-xs text-zinc-100";
+  const areaClass = "min-h-[72px] border-zinc-800 bg-zinc-900 text-xs text-zinc-100";
+
+  return (
+    <div className="space-y-3 p-3 text-zinc-100">
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+        <div className="text-xs font-bold text-emerald-300">Selected</div>
+        <div className="mt-1 truncate text-xs text-zinc-400">{selected.tag || "element"}</div>
+        <div className="mt-1 truncate text-[11px] text-zinc-500">{selected.id}</div>
+        <div className="mt-2 text-[11px] text-zinc-500">Auto-save enabled</div>
+      </div>
+
+      {String(selected.id || "").startsWith("customElements.") ? (
+        <button
+          type="button"
+          onClick={deleteElement}
+          className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20"
+        >
+          Delete selected custom text
+        </button>
+      ) : null}
+
+
+      {selected.text !== undefined && selected.text !== null ? (
+        <Section icon={Type} title="Text">
+          <Textarea
+            value={selected.text || ""}
+            onChange={(e) => patchText(e.target.value)}
+            className={areaClass}
+            placeholder="Element text..."
+          />
+        </Section>
+      ) : null}
+
+      {selected.mediaUrl !== undefined && selected.mediaUrl !== null ? (
+        <Section icon={Image} title="Media">
+          <Field label={selected.mediaType === "video" ? "Video URL" : "Image URL"}>
+            <Input
+              value={selected.mediaUrl || ""}
+              onChange={(e) => patchMediaUrl(e.target.value)}
+              className={inputClass}
+              placeholder="https://..."
+            />
+          </Field>
+
+          {selected.mediaUrl ? (
+            <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+              {selected.mediaType === "video" ? (
+                <video src={selected.mediaUrl} className="max-h-36 w-full object-cover" muted loop playsInline />
+              ) : (
+                <img src={selected.mediaUrl} alt="" className="max-h-36 w-full object-cover" />
+              )}
+            </div>
+          ) : null}
+        </Section>
+      ) : null}
+
+      <Section icon={Box} title="Layout">
+        <Row>
+          <Field label="Width">
+            <Input value={styles.width || ""} onChange={(e) => patchStyle("width", e.target.value)} className={inputClass} placeholder="320px / 100%" />
+          </Field>
+          <Field label="Height">
+            <Input value={styles.height || ""} onChange={(e) => patchStyle("height", e.target.value)} className={inputClass} placeholder="120px / auto" />
+          </Field>
+        </Row>
+
+        <Row>
+          <Field label="Min height">
+            <Input value={styles.minHeight || ""} onChange={(e) => patchStyle("minHeight", e.target.value)} className={inputClass} placeholder="400px" />
+          </Field>
+          <Field label="Max width">
+            <Input value={styles.maxWidth || ""} onChange={(e) => patchStyle("maxWidth", e.target.value)} className={inputClass} placeholder="900px" />
+          </Field>
+        </Row>
+
+        <Row>
+          <Field label="Padding">
+            <Input value={styles.padding || ""} onChange={(e) => patchStyle("padding", e.target.value)} className={inputClass} placeholder="24px" />
+          </Field>
+          <Field label="Margin">
+            <Input value={styles.margin || ""} onChange={(e) => patchStyle("margin", e.target.value)} className={inputClass} placeholder="0 auto" />
+          </Field>
+        </Row>
+
+        <Row>
+          <Field label="Gap">
+            <Input value={styles.gap || ""} onChange={(e) => patchStyle("gap", e.target.value)} className={inputClass} placeholder="18px" />
+          </Field>
+          <Field label="Display">
+            <Input value={styles.display || ""} onChange={(e) => patchStyle("display", e.target.value)} className={inputClass} placeholder="block / flex / grid" />
+          </Field>
+        </Row>
+
+        <Row>
+          <Field label="Justify">
+            <Input value={styles.justifyContent || ""} onChange={(e) => patchStyle("justifyContent", e.target.value)} className={inputClass} placeholder="center / space-between" />
+          </Field>
+          <Field label="Align">
+            <Input value={styles.alignItems || ""} onChange={(e) => patchStyle("alignItems", e.target.value)} className={inputClass} placeholder="center / stretch" />
+          </Field>
+        </Row>
+
+        <Field label="Grid columns">
+          <Input
+            value={styles.gridTemplateColumns || ""}
+            onChange={(e) => patchStyle("gridTemplateColumns", e.target.value)}
+            className={inputClass}
+            placeholder="repeat(3, minmax(0, 1fr))"
+          />
+        </Field>
+      </Section>
+
+      <Section icon={Type} title="Typography">
+        <Row>
+          <Field label="Font size">
+            <Input value={styles.fontSize || ""} onChange={(e) => patchStyle("fontSize", e.target.value)} className={inputClass} placeholder="32px" />
+          </Field>
+          <Field label="Weight">
+            <Input value={styles.fontWeight || ""} onChange={(e) => patchStyle("fontWeight", e.target.value)} className={inputClass} placeholder="700" />
+          </Field>
+        </Row>
+
+        <Row>
+          <Field label="Line height">
+            <Input value={styles.lineHeight || ""} onChange={(e) => patchStyle("lineHeight", e.target.value)} className={inputClass} placeholder="1.1" />
+          </Field>
+          <Field label="Letter spacing">
+            <Input value={styles.letterSpacing || ""} onChange={(e) => patchStyle("letterSpacing", e.target.value)} className={inputClass} placeholder="-0.04em" />
+          </Field>
+        </Row>
+
+        <Field label="Text color">
+          <Input value={styles.color || ""} onChange={(e) => patchStyle("color", e.target.value)} className={inputClass} placeholder="#ffffff" />
+        </Field>
+      </Section>
+
+      <Section icon={SlidersHorizontal} title="Visual">
+        <Row>
+          <Field label="Background">
+            <Input value={styles.background || ""} onChange={(e) => patchStyle("background", e.target.value)} className={inputClass} placeholder="rgba(...) / #111" />
+          </Field>
+          <Field label="Radius">
+            <Input value={styles.borderRadius || ""} onChange={(e) => patchStyle("borderRadius", e.target.value)} className={inputClass} placeholder="24px" />
+          </Field>
+        </Row>
+
+        <Row>
+          <Field label="Border">
+            <Input value={styles.border || ""} onChange={(e) => patchStyle("border", e.target.value)} className={inputClass} placeholder="1px solid ..." />
+          </Field>
+          <Field label="Opacity">
+            <Input value={styles.opacity || ""} onChange={(e) => patchStyle("opacity", e.target.value)} className={inputClass} placeholder="0.8" />
+          </Field>
+        </Row>
+
+        <Field label="Shadow">
+          <Input value={styles.boxShadow || ""} onChange={(e) => patchStyle("boxShadow", e.target.value)} className={inputClass} placeholder="0 20px 80px rgba(...)" />
+        </Field>
+
+        <Row>
+          <Field label="Scale">
+            <Input value={styles.transform || ""} onChange={(e) => patchStyle("transform", e.target.value)} className={inputClass} placeholder="scale(1.05)" />
+          </Field>
+          <Field label="Z index">
+            <Input value={styles.zIndex || ""} onChange={(e) => patchStyle("zIndex", e.target.value)} className={inputClass} placeholder="10" />
+          </Field>
+        </Row>
+
+        <Field label="Extra classes">
+          <Input value={selected.classes || ""} onChange={(e) => patchClasses(e.target.value)} className={inputClass} placeholder="custom-class" />
+        </Field>
+      </Section>
+    </div>
+  );
+}

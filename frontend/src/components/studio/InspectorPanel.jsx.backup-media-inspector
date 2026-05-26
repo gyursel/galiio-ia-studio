@@ -1,0 +1,221 @@
+import React from "react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { MousePointer2, X, Palette, Type, Box } from "lucide-react";
+
+function px(v) {
+  if (!v) return "";
+  const m = String(v).match(/-?[\d.]+/);
+  return m ? m[0] : "";
+}
+
+function rgbToHex(rgb) {
+  if (!rgb) return "#000000";
+  const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!m) return "#000000";
+  const toHex = (n) => Number(n).toString(16).padStart(2, "0");
+  return `#${toHex(m[1])}${toHex(m[2])}${toHex(m[3])}`;
+}
+
+export default function InspectorPanel({ selected, onUpdate, onClose, onEnter, editing }) {
+  if (!editing) {
+    return (
+      <div className="p-4 text-center">
+        <div className="mx-auto w-10 h-10 rounded-lg bg-zinc-900 grid place-items-center mb-3">
+          <MousePointer2 className="w-4 h-4 text-zinc-400" />
+        </div>
+        <h3 className="text-sm font-medium tracking-tight">Visual editor</h3>
+        <p className="text-xs text-zinc-500 mt-1.5 leading-relaxed">
+          Switch the canvas to <span className="text-zinc-300">Edit</span> mode to click any
+          section and tweak its text, colors and spacing.
+        </p>
+        <button
+          data-testid="enter-visual-edit-btn"
+          onClick={onEnter}
+          className="mt-4 h-8 px-3 rounded-md bg-white text-zinc-950 text-xs font-medium hover:bg-zinc-200 active:scale-95 transition-all"
+        >
+          Enter visual editor
+        </button>
+      </div>
+    );
+  }
+
+  if (!selected) {
+    return (
+      <div className="p-4 text-center">
+        <MousePointer2 className="w-4 h-4 text-zinc-500 mx-auto mb-3" />
+        <p className="text-xs text-zinc-500">Click any element in the preview to edit it.</p>
+      </div>
+    );
+  }
+
+  const s = selected.styles || {};
+  const patchStyle = (k, v) => onUpdate(selected.id, { styles: { [k]: v } });
+  const patchText = (t) => onUpdate(selected.id, { text: t });
+  const patchClasses = (c) => onUpdate(selected.id, { classes: c });
+
+  return (
+    <div className="p-3 space-y-4 text-xs" data-testid="inspector-panel">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-200 font-mono text-[10px]">
+            {selected.tag}
+          </span>
+          <span className="text-zinc-500 font-mono text-[10px]">#{selected.id}</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="text-zinc-500 hover:text-white"
+          data-testid="inspector-close-btn"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Text */}
+      {selected.text !== null && selected.text !== undefined && (
+        <Section icon={Type} title="Text">
+          <Textarea
+            data-testid="inspector-text"
+            value={selected.text}
+            onChange={(e) => patchText(e.target.value)}
+            className="bg-zinc-900 border-zinc-800 min-h-[60px] text-xs"
+            placeholder="Element text…"
+          />
+        </Section>
+      )}
+
+      {/* Colors */}
+      <Section icon={Palette} title="Colors">
+        <Field label="Text">
+          <input
+            type="color"
+            value={rgbToHex(s.color)}
+            onChange={(e) => patchStyle("color", e.target.value)}
+            className="h-7 w-10 rounded border border-zinc-800 bg-zinc-900 cursor-pointer"
+            data-testid="color-text"
+          />
+          <Input
+            value={s.color || ""}
+            onChange={(e) => patchStyle("color", e.target.value)}
+            className="bg-zinc-900 border-zinc-800 h-7 text-xs flex-1"
+          />
+        </Field>
+        <Field label="Background">
+          <input
+            type="color"
+            value={rgbToHex(s.backgroundColor)}
+            onChange={(e) => patchStyle("backgroundColor", e.target.value)}
+            className="h-7 w-10 rounded border border-zinc-800 bg-zinc-900 cursor-pointer"
+            data-testid="color-bg"
+          />
+          <Input
+            value={s.backgroundColor || ""}
+            onChange={(e) => patchStyle("backgroundColor", e.target.value)}
+            className="bg-zinc-900 border-zinc-800 h-7 text-xs flex-1"
+          />
+        </Field>
+      </Section>
+
+      {/* Typography */}
+      <Section icon={Type} title="Typography">
+        <Field label="Font size">
+          <Input
+            value={px(s.fontSize)}
+            onChange={(e) => patchStyle("fontSize", e.target.value + "px")}
+            className="bg-zinc-900 border-zinc-800 h-7 text-xs"
+            data-testid="font-size"
+          />
+          <span className="text-zinc-500 text-[10px]">px</span>
+        </Field>
+        <Field label="Weight">
+          <select
+            value={s.fontWeight || "400"}
+            onChange={(e) => patchStyle("fontWeight", e.target.value)}
+            className="bg-zinc-900 border border-zinc-800 h-7 rounded text-xs px-2 flex-1"
+            data-testid="font-weight"
+          >
+            {["300", "400", "500", "600", "700", "800"].map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Align">
+          <select
+            value={s.textAlign || "left"}
+            onChange={(e) => patchStyle("textAlign", e.target.value)}
+            className="bg-zinc-900 border border-zinc-800 h-7 rounded text-xs px-2 flex-1"
+            data-testid="text-align"
+          >
+            {["left", "center", "right", "justify"].map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Section>
+
+      {/* Spacing */}
+      <Section icon={Box} title="Spacing">
+        <div className="grid grid-cols-4 gap-2">
+          {["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].map((k, i) => (
+            <div key={k}>
+              <label className="text-[10px] text-zinc-500 block mb-1">P{["T","R","B","L"][i]}</label>
+              <Input
+                value={px(s[k])}
+                onChange={(e) => patchStyle(k, e.target.value + "px")}
+                className="bg-zinc-900 border-zinc-800 h-7 text-xs text-center px-1"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-4 gap-2 mt-2">
+          {["marginTop", "marginRight", "marginBottom", "marginLeft"].map((k, i) => (
+            <div key={k}>
+              <label className="text-[10px] text-zinc-500 block mb-1">M{["T","R","B","L"][i]}</label>
+              <Input
+                value={px(s[k])}
+                onChange={(e) => patchStyle(k, e.target.value + "px")}
+                className="bg-zinc-900 border-zinc-800 h-7 text-xs text-center px-1"
+              />
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Classes */}
+      <Section icon={Box} title="Tailwind classes">
+        <Textarea
+          value={selected.classes || ""}
+          onChange={(e) => patchClasses(e.target.value)}
+          className="bg-zinc-900 border-zinc-800 min-h-[60px] text-xs font-mono"
+          placeholder="e.g. text-xl font-bold text-white"
+          data-testid="inspector-classes"
+        />
+      </Section>
+    </div>
+  );
+}
+
+function Section({ icon: Icon, title, children }) {
+  return (
+    <div className="border-t border-zinc-900 pt-3">
+      <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-2">
+        <Icon className="w-3 h-3" /> {title}
+      </div>
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-[10px] text-zinc-500 w-16 shrink-0">{label}</label>
+      {children}
+    </div>
+  );
+}

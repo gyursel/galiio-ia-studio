@@ -1,0 +1,160 @@
+{
+  "project_info": {
+    "name": "Galio AI Studio",
+    "type": "AI Website Builder (SaaS Workspace)",
+    "domain": "Developer Tools / Enterprise SaaS",
+    "theme": "Dark Theme",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "vibe": "Premium, minimal, functional, sleek, similar to Hercules AI / Cursor / Bolt",
+    "core_goal": "Provide a high-end, distraction-free environment for AI-assisted website generation and editing."
+  },
+  "typography": {
+    "rules": {
+      "anti_default": true,
+      "banned_fonts": ["Inter", "Roboto", "Open Sans", "Lato"]
+    },
+    "fonts": {
+      "headings": {
+        "family": "Geist, sans-serif",
+        "weights": ["400", "500", "600"],
+        "usage": "Use tight letter spacing (tracking-tight) for all headings."
+      },
+      "body": {
+        "family": "Geist, sans-serif",
+        "weights": ["400", "500"],
+        "usage": "Clean, highly readable base text."
+      },
+      "code": {
+        "family": "JetBrains Mono, monospace",
+        "weights": ["400", "500"],
+        "usage": "Use for the code editor panel, file explorer items, and terminal logs."
+      }
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl font-medium tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-medium tracking-tight",
+      "h3": "text-xl font-medium tracking-tight",
+      "h4": "text-lg font-medium",
+      "body": "text-sm",
+      "small": "text-xs",
+      "code": "text-[13px] leading-relaxed"
+    }
+  },
+  "colors": {
+    "palette": {
+      "background": "#09090B",
+      "surface": "#18181B",
+      "surface_hover": "#27272A",
+      "border": "#27272A",
+      "border_focus": "#52525B",
+      "text_primary": "#FAFAFA",
+      "text_secondary": "#A1A1AA",
+      "text_muted": "#71717A",
+      "primary": "#FAFAFA",
+      "primary_foreground": "#09090B",
+      "accent_glow": "#FFFFFF"
+    },
+    "strategy": {
+      "description": "Monochrome high-contrast design. Everything structural is shades of dark zinc. Actions are pure white. Avoid generic blue gradients.",
+      "accents": "Use pure white or 10% white (rgba(255,255,255,0.1)) for glows and active states. AI highlights should use subtle white glows, not neon colors, to maintain a premium studio feel."
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": {
+      "compact": "p-2 gap-2",
+      "standard": "p-4 gap-4",
+      "loose": "p-8 gap-8",
+      "massive": "p-16 gap-16"
+    },
+    "workspace_grid": {
+      "description": "3-panel bento grid for the Studio view. Full viewport height (h-screen).",
+      "structure": "grid grid-cols-[300px_1fr_300px] h-[calc(100vh-56px)]",
+      "left_panel": "AI chat and workflow modes. Strict vertical flex, border-r border-zinc-800.",
+      "center_panel": "Live preview canvas area. Background is dotted or darker (#000) to frame the preview window.",
+      "right_panel": "Code/Files panel. border-l border-zinc-800, using monospace font."
+    },
+    "alignment": {
+      "text": "Left-align dense content and chat messages. Center-align only the main landing page hero.",
+      "icons": "Optical alignment (padding adjustments) to perfectly center icons within buttons."
+    }
+  },
+  "surfaces_and_borders": {
+    "panels": "Solid background (bg-zinc-950), no shadows, 1px subtle inner border.",
+    "cards": "bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors",
+    "glassmorphism": "Used only for floating toolbars (Device toggles, Top Navigation): bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/50.",
+    "radii": {
+      "app": "rounded-none",
+      "panels": "rounded-none",
+      "cards": "rounded-xl",
+      "buttons": "rounded-md",
+      "inputs": "rounded-md"
+    }
+  },
+  "components_strategy": {
+    "navigation": "Sticky top bar, z-50, backdrop-blur-md, containing project title, utility buttons, and Export/Deploy CTAs.",
+    "buttons": {
+      "primary": "bg-white text-zinc-950 hover:bg-zinc-200 font-medium px-4 py-2",
+      "secondary": "bg-transparent border border-zinc-800 text-white hover:bg-zinc-800 px-4 py-2",
+      "ghost": "bg-transparent text-zinc-400 hover:text-white hover:bg-zinc-900 px-3 py-2"
+    },
+    "ai_chat": "Chat bubbles should be distinguishable: User (bg-zinc-800 text-white), AI (bg-transparent text-zinc-300, border-l-2 border-white pl-4).",
+    "preview_canvas": "A scaled frame in the center panel. Wrap the frame in a subtle border ring (ring-1 ring-zinc-800). Add a top device toolbar (Desktop/Tablet/Mobile).",
+    "shadcn": "Use Shadcn components for Dropdowns, Dialogs, Selects, and Tabs. Customize them to remove Vercel defaults (replace rounded corners to match our scale, darken borders).",
+    "icons": "Use 'lucide-react'. They match the strict, geometric look of developer tools."
+  },
+  "motion_and_interactions": {
+    "hover_states": "All buttons must change background color slightly. Text color must shift from secondary to primary on hover.",
+    "active_states": "Use transform scale-95 for button clicks.",
+    "transitions": "transition-all duration-200 ease-out",
+    "loading": "Use a minimal pulsing text or a simple CSS spinner. Avoid complex or childish loading animations."
+  },
+  "media_urls": {
+    "brand_logo": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/7603ccbe-97ca-4a50-a468-843d48ad91b0/images/9e68df844fa2d6fe4e61fc68000dd724d05e2abe6cc4f86c205fc5110f8ee8cb.png",
+      "description": "Galio AI Studio Logo",
+      "usage": "Top left of navigation bar and landing page header."
+    },
+    "hero_background": {
+      "url": "https://static.prod-images.emergentagent.com/jobs/7603ccbe-97ca-4a50-a468-843d48ad91b0/images/2314d1d90f98bd6507a82b51e45142f29cecde935e3aa509352e0aa4c6e1af57.png",
+      "description": "Abstract dark 3D geometry representing AI workflow",
+      "usage": "Use as a background cover with a bg-black/60 overlay for the Landing Page hero section."
+    },
+    "templates": [
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/7603ccbe-97ca-4a50-a468-843d48ad91b0/images/9aa754c2219a7921f3d6e46331f48e33cf57ed32316505b87d13ca5ee4f6ad3d.png",
+        "description": "Portfolio Template Mockup",
+        "usage": "Thumbnail for templates gallery modal."
+      },
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/7603ccbe-97ca-4a50-a468-843d48ad91b0/images/21c685e7be4b573ddf6984b614526721bd541818a79303d6dfb1860d5c1b3f2f.png",
+        "description": "SaaS Dashboard Template Mockup",
+        "usage": "Thumbnail for templates gallery modal."
+      }
+    ],
+    "user_avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDB8fHx8MTc3OTc3MTk5OXww&ixlib=rb-4.1.0&q=85",
+        "usage": "User profile dropdown trigger on the top right navigation."
+      }
+    ]
+  },
+  "views_and_pages": {
+    "landing_page": "Hero section with absolute background image (with heavy dark overlay). Massive Geist H1 heading. White 'Start Building' CTA. Sleek and minimal.",
+    "dashboard": "Project list page. Grid layout. Each card represents a project with a placeholder cover, project name, last edited time. Includes 'New Project' card.",
+    "ai_studio_workspace": {
+      "header": "Contains logo, current project title, Undo/Redo icons, Device toggles, 'Export ZIP', 'GitHub Push', 'Deploy Vercel', 'Publish' CTAs.",
+      "left_panel": "Tabbed modes (Plan, Build, Debug, Refine). Chat interface. Prompts text area pinned to bottom.",
+      "center_panel": "A nested div structure representing the browser frame. Dynamic width based on Desktop/Tablet/Mobile selection.",
+      "right_panel": "Collapsible tree view for files. Code editor area with JetBrains Mono, syntax highlighting colors (using base colors)."
+    }
+  },
+  "instructions_to_main_agent": [
+    "MUST use pure HTML/Tailwind for the landing page layout and complex workspace grid structuring.",
+    "MUST install and use 'lucide-react' for all icons.",
+    "MUST add 'data-testid' to all interactive elements, e.g., data-testid='deploy-vercel-btn'.",
+    "MUST strictly adhere to the monochromatic palette (bg-zinc-950, border-zinc-800, text-zinc-50). Do not introduce unapproved colors.",
+    "MUST use Geist and JetBrains Mono fonts. Ensure they are loaded/imported via next/font or standard CSS imports.",
+    "Mock the GitHub Push and Vercel Deploy actions with a toast notification (e.g., using 'sonner'). Highlight 'mocked' in the UI logs.",
+    "Build the Workspace using flex/grid rules specified in 'layout_and_spacing'. Ensure the center preview canvas scales gracefully."
+  ]
+}

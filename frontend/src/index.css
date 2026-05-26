@@ -1,0 +1,149 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+    background-color: #09090b;
+    color: #fafafa;
+}
+
+body {
+    margin: 0;
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
+}
+
+code,
+pre,
+.font-mono {
+    font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+/* Selection */
+::selection {
+    background-color: rgba(250, 250, 250, 0.15);
+    color: #ffffff;
+}
+
+/* Subtle scrollbars */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: #09090b;
+}
+::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+}
+
+/* Dotted background pattern for canvas */
+.canvas-grid {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* Soft glow ring used on focused panels */
+.glow-ring {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 30px 80px -30px rgba(0, 0, 0, 0.6);
+}
+
+/* Staggered fade-in for cards / hero text */
+@keyframes fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.fade-up {
+    animation: fade-up 0.6s ease-out both;
+}
+
+/* Pulse for AI loading */
+@keyframes ai-pulse {
+    0%,
+    100% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+.ai-pulse {
+    animation: ai-pulse 1.4s ease-in-out infinite;
+}
+
+@layer base {
+    :root {
+        --background: 240 6% 6%;
+        --foreground: 0 0% 98%;
+        --card: 240 4% 9%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 4% 9%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 6% 6%;
+        --secondary: 240 4% 12%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 4% 12%;
+        --muted-foreground: 240 5% 65%;
+        --accent: 240 4% 16%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 4% 16%;
+        --input: 240 4% 16%;
+        --ring: 240 5% 35%;
+        --radius: 0.5rem;
+    }
+    .dark {
+        --background: 240 6% 6%;
+        --foreground: 0 0% 98%;
+        --card: 240 4% 9%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 4% 9%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 6% 6%;
+        --secondary: 240 4% 12%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 4% 12%;
+        --muted-foreground: 240 5% 65%;
+        --accent: 240 4% 16%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 4% 16%;
+        --input: 240 4% 16%;
+        --ring: 240 5% 35%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}

@@ -1,0 +1,46 @@
+{
+  "summary": "Backend: 11/12 endpoints PASS via pytest (health, templates, /auth/me unauth-401 & auth-200, projects CRUD, messages, versions, restore, export ZIP, mocked GitHub/Vercel, delete). The only failing test is POST /api/ai/generate which returns 500 from server (ingress shows 502 after ~60s ingress timeout) because the Emergent LLM key budget is exhausted. Backend logs: 'litellm.BadRequestError: OpenAIException - Budget has been exceeded! Current cost: 0.667572, Max budget: 0.4'. Because AI generation is broken, refine snapshot creation and follow-on flows that depend on a real LLM response cannot be verified end-to-end, but messages/versions/restore endpoints themselves return 200 and behave correctly when generation succeeds (verified by code review + 200 responses for the dependent endpoints). Frontend: Landing renders with hero, features, workflow, templates sections. Clicking 'Sign in' navigates to https://auth.emergentagent.com/?redirect=...%2Fdashboard (verified). /dashboard without session redirects to /. With seeded session_token cookie, /dashboard renders 'Welcome back, Galio Tester', Templates dialog opens and lists all 6 templates. /studio/{id} renders the 3-panel layout, Plan/Build/Debug/Refine mode tabs, Desktop/Tablet/Mobile device toggles, index.html/styles.css/script.js code tabs, History, Export ZIP, and Publish dropdown with GitHub/Vercel items both showing MOCKED.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/ai/generate", "issue": "Emergent LLM key budget exhausted ('Budget has been exceeded! Current cost: 0.667572, Max budget: 0.4'). Endpoint returns 500 (502 via ingress after ~60s). This blocks the WOW build/refine/debug flow. Not a code bug — quota/key problem.", "priority": "CRITICAL"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "AI build/refine via Studio chat", "issue": "Backend AI endpoint fails due to LLM budget exhaustion; the Studio UI will surface an error toast and never populate preview/code. Front-end is wired correctly — the failure is upstream.", "affected_selectors": ["chat Send button", "preview iframe", "code panel"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_galio_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "URGENT: Refresh / top-up the Emergent LLM key budget (EMERGENT_LLM_KEY=sk-emergent-462C32516063091F92). Current spend 0.667572 exceeds 0.4 cap so every /api/ai/generate call fails 500. No code change needed.",
+    "Once budget is restored, re-run the AI build+refine test (TestAI::test_build_then_refine) to validate version snapshot and messages flow end-to-end.",
+    "Consider catching the BadRequestError from litellm and returning a clearer 402/503 with 'LLM quota exceeded' instead of generic 500, so the frontend can show a friendlier toast.",
+    "Consider streaming or async job pattern for /api/ai/generate — Claude Sonnet build calls can take 60–120s and currently risk Kubernetes ingress 502 (60s timeout) even when generation succeeds."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~620 lines and mixes auth, projects, AI, export, integrations. Still acceptable for MVP but consider splitting into routers (auth/projects/ai/integrations) as it grows.",
+    "AI endpoint timeout risk: ingress proxy times out at ~60s, but Claude generation can take longer. Recommend either reducing max_tokens, switching to streaming, or returning a job_id and polling.",
+    "Exception handling in /api/ai/generate wraps every LLM error in a single 500 detail — useful errors like quota-exceeded are flattened. Add per-error mapping (402 for quota, 504 for timeout).",
+    "_safe_json_extract silently falls back to empty html/css/js on parse failure; combined with `or project.get('html')` this could leave the project unchanged with a misleading 200 response. Consider returning a 'partial' flag.",
+    "Cookie is set with samesite='none', secure=True — correct for preview domain. Good.",
+    "All Mongo queries correctly exclude _id via {'_id': 0}. Good.",
+    "No rate limiting on /api/ai/generate — a single malicious user could burn the whole LLM budget (as we are seeing now). Add per-user/per-IP rate limits.",
+    "data-testid attributes are missing on key Studio buttons (mode tabs, device toggles, Send, Publish menu items, Export ZIP). Tests had to fall back to text selectors. Recommend adding data-testid for future regression."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_galio_backend.py (created)"
+  ],
+  "success_rate": {"backend": "92% (11/12 pytest cases pass; the failing one is AI-generate blocked by external LLM quota)", "frontend": "100% of UI flows tested rendered correctly (landing, auth redirect URL, protected route redirect, dashboard, templates dialog, studio 3-panel + mode tabs + device toggles + code panel + publish MOCKED dropdown)"},
+  "test_credentials": "Seeded via mongosh: SESSION_TOKEN=test_session_1779772689346, USER_ID=test-user-1779772689346, email=galio.tester.1779772689346@example.com (7-day expiry).",
+  "seed_data_creation": "Created 1 user + 1 user_session in test_database. Created/deleted several TEST_ prefixed projects during pytest run (auto-cleaned). One leftover project prj_2b5e42c7d67b from earlier fixture run was retained.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Use the seeded SESSION_TOKEN=test_session_1779772689346 (Bearer or cookie). All endpoints verified except AI generation which is blocked by Emergent LLM budget exhaustion. Once budget is restored, re-run: pytest /app/backend/tests/test_galio_backend.py::TestAI -v. Frontend flows that need AI (chat -> preview) cannot be verified until then.",
+  "rca of the issue": "RCA: /api/ai/generate returns HTTP 500 (and HTTP 502 at ingress on long requests). Root cause confirmed from backend.err.log: emergentintegrations -> litellm raises 'OpenAIException - Budget has been exceeded! Current cost: 0.667572, Max budget: 0.4' before any Claude completion is produced. Mitigation: (a) refresh/raise the Emergent LLM key budget; (b) wrap the LlmChat call to map BudgetExceeded -> HTTP 402 with clear message; (c) add basic per-user rate limiting on /api/ai/generate to prevent future budget burns; (d) consider async job pattern to avoid 60s ingress timeout."
+}

@@ -1,0 +1,162 @@
+import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
+import { Wand2, RefreshCw, MousePointer2, X } from "lucide-react";
+import { injectEditorScript } from "@/lib/iframeEditor";
+import PremiumWebsiteRenderer from "@/components/studio/PremiumWebsiteRenderer";
+
+const DEVICE_SIZES = {
+  desktop: { width: "100%", maxWidth: 1280, label: "1280×800" },
+  tablet: { width: 820, maxWidth: 820, label: "820×1180" },
+  mobile: { width: 390, maxWidth: 390, label: "390×844" },
+};
+
+const PreviewCanvas = forwardRef(function PreviewCanvas(
+  { html, css, js, projectState, device, generating, editing, selectedId, onSelectionChange, onSerialize },
+  ref
+) {
+  const iframeRef = useRef(null);
+  const size = DEVICE_SIZES[device] || DEVICE_SIZES.desktop;
+  const srcDoc = html ? injectEditorScript(html) : null;
+
+  // Receive postMessage from iframe
+  useEffect(() => {
+    function onMessage(ev) {
+      const msg = ev.data || {};
+      if (!msg.type) return;
+      if (msg.type === "galio:selected") {
+        onSelectionChange?.(msg.payload);
+      } else if (msg.type === "galio:serialized") {
+        onSerialize?.(msg.payload?.html);
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [onSelectionChange, onSerialize]);
+
+  // Toggle edit mode in iframe
+  useEffect(() => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { type: editing ? "galio:enable" : "galio:disable" },
+      "*"
+    );
+  }, [editing, srcDoc]);
+
+  const refresh = () => {
+    if (iframeRef.current) {
+      const doc = iframeRef.current.srcdoc;
+      iframeRef.current.srcdoc = "";
+      requestAnimationFrame(() => {
+        iframeRef.current.srcdoc = doc;
+      });
+    }
+  };
+
+  // Expose imperative methods
+  useImperativeHandle(ref, () => ({
+    update(id, patch) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "galio:update", payload: { id, patch } },
+        "*"
+      );
+    },
+    insert(htmlSnippet) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "galio:insert", payload: { html: htmlSnippet } },
+        "*"
+      );
+    },
+    serialize() {
+      iframeRef.current?.contentWindow?.postMessage({ type: "galio:serialize" }, "*");
+    },
+  }));
+
+  return (
+    <main className="canvas-grid bg-black flex flex-col min-h-0">
+      <div className="h-9 shrink-0 border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md flex items-center px-3 gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
+          <span className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
+          <span className="w-2.5 h-2.5 rounded-full bg-zinc-700" />
+        </div>
+        <div className="ml-3 flex-1 max-w-md">
+          <div className="h-6 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-500 px-2 inline-flex items-center font-mono w-full">
+            galio.preview/local
+          </div>
+        </div>
+        {editing && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-300 text-[10px] uppercase tracking-widest font-mono"
+            data-testid="edit-mode-badge"
+          >
+            <MousePointer2 className="w-3 h-3" /> Edit mode
+          </span>
+        )}
+        <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
+          {size.label}
+        </div>
+        <button
+          data-testid="refresh-preview-btn"
+          onClick={refresh}
+          className="h-6 w-6 grid place-items-center rounded text-zinc-400 hover:text-white hover:bg-zinc-900"
+          title="Refresh"
+        >
+          <RefreshCw className="w-3 h-3" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-auto p-6 grid place-items-center min-h-0">
+        {!html && !projectState ? (
+          <EmptyState generating={generating} />
+        ) : (
+          <div
+            className={`bg-white rounded-md shadow-2xl ring-1 overflow-hidden transition-shadow ${
+              editing ? "ring-blue-500/60" : "ring-zinc-800"
+            }`}
+            style={{
+              width: typeof size.width === "number" ? `${size.width}px` : size.width,
+              maxWidth: size.maxWidth,
+              height: device === "desktop" ? "calc(100vh - 180px)" : device === "tablet" ? 1180 : 844,
+              maxHeight: "calc(100vh - 120px)",
+              transition: "width .2s ease, height .2s ease, box-shadow .2s ease",
+            }}
+          >
+            {projectState ? (
+              <div className="w-full h-full overflow-auto bg-black" data-testid="react-preview">
+                <PremiumWebsiteRenderer website={projectState} editing={editing} selectedId={selectedId} onSelect={onSelectionChange} />
+              </div>
+            ) : (
+              <iframe
+                ref={iframeRef}
+                title="preview"
+                data-testid="preview-iframe"
+                srcDoc={srcDoc}
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                className="w-full h-full border-0"
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+});
+
+function EmptyState({ generating }) {
+  return (
+    <div className="text-center max-w-md">
+      <div className="mx-auto w-12 h-12 rounded-xl border border-zinc-800 grid place-items-center mb-5">
+        <Wand2 className={`w-5 h-5 text-zinc-400 ${generating ? "ai-pulse" : ""}`} />
+      </div>
+      <h2 className="text-lg font-medium tracking-tight text-zinc-200">
+        {generating ? "Building your website…" : "Your preview will appear here"}
+      </h2>
+      <p className="text-sm text-zinc-500 mt-2 leading-relaxed">
+        {generating
+          ? "Galio is composing sections, picking colors, and writing copy."
+          : "Send a prompt from the chat panel to generate your first draft."}
+      </p>
+    </div>
+  );
+}
+
+export default PreviewCanvas;

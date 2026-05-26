@@ -1,0 +1,4 @@
+/* App level overrides (kept minimal — most styling is via Tailwind/index.css) */
+.App {
+    text-align: left;
+}

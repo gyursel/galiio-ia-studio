@@ -1,0 +1,1112 @@
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+
+function text(value, fallback = "") {
+  const v = String(value || "").trim();
+  return v || fallback;
+}
+
+function list(value, fallback = []) {
+  return Array.isArray(value) && value.length ? value : fallback;
+}
+
+export default function PremiumWebsiteRenderer({
+  website,
+  editing = false,
+  selectedId = null,
+  onSelect,
+  onUpdate,
+}) {
+  const state = website || {};
+  const overrides = state.overrides || {};
+  const rootRef = useRef(null);
+  const overlayDragRef = useRef(null);
+  const [overlayRect, setOverlayRect] = useState(null);
+
+  const brandName = text(state.brandName, "Galio Premium");
+  const tagline = text(state.tagline, "Premium digital experience");
+  const industry = text(state.industry, "premium brand");
+  const primary = text(state.primaryColor, "#7CFFB2");
+  const secondary = text(state.secondaryColor, "#07070a");
+
+  const hero = state.hero || {};
+  const footer = state.footer || {};
+  const media = state.mediaAssets || {};
+  const navigation = list(state.navigation, ["Experience", "Features", "Work", "Contact"]);
+  const stats = list(state.stats, [
+    { title: "Premium", label: "Visual system" },
+    { title: "Fast", label: "Launch flow" },
+    { title: "100%", label: "Responsive" },
+  ]);
+
+  const heroVideoUrl = text(media.heroVideoUrl || media.backgroundVideoUrl, "");
+  const heroPosterUrl = text(media.heroPosterUrl || media.heroImageUrl || media.backgroundImageUrl, "");
+  const collectionImages = list(media.collectionImages, []);
+
+  const features = list(state.features, [
+    {
+      title: "Premium Strategy",
+      description: "A polished structure built for trust, conversion and high-end brand perception.",
+    },
+    {
+      title: "Cinematic Visuals",
+      description: "Dark, modern, memorable presentation with strong hierarchy and premium spacing.",
+    },
+    {
+      title: "Responsive Flow",
+      description: "Clean sections designed to feel sharp across desktop, tablet and mobile.",
+    },
+  ]);
+
+  const sections = list(state.sections, [
+    {
+      title: "Signature Experience",
+      description: `A carefully crafted presentation for ${industry}, focused on trust, clarity and premium perception.`,
+      items: ["Premium positioning", "Clear visual hierarchy", "Conversion-first layout"],
+    },
+    {
+      title: "Built To Convert",
+      description: "Every section guides visitors from first impression to action with strong messaging and elegant UI.",
+      items: ["Hero CTA", "Product highlights", "Trust signals"],
+    },
+  ]);
+
+  const pricing = list(state.pricing, []);
+
+  function overrideClass(id) {
+    return text(overrides[id]?.classes, "");
+  }
+
+  function overrideStyle(id) {
+    return overrides[id]?.styles || {};
+  }
+
+  function dataId(id) {
+    return String(id || "").replace(/"/g, "&quot;");
+  }
+
+  function cssValue(key, value) {
+    const raw = String(value ?? "").replace(/;/g, "").trim();
+    if (!raw) return "";
+
+    const pxKeys = new Set([
+      "width",
+      "height",
+      "minHeight",
+      "maxWidth",
+      "padding",
+      "margin",
+      "borderRadius",
+      "gap",
+      "fontSize",
+      "letterSpacing",
+      "top",
+      "right",
+      "bottom",
+      "left",
+    ]);
+
+    if (pxKeys.has(key) && /^-?\d+(\.\d+)?$/.test(raw)) {
+      return `${raw}px`;
+    }
+
+    return raw;
+  }
+
+  function buildOverrideCss() {
+    return Object.entries(overrides || {})
+      .map(([id, config]) => {
+        const styles = config?.styles || {};
+        const declarations = Object.entries(styles)
+          .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
+          .flatMap(([key, value]) => {
+            const cssKey = key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+            const safeValue = cssValue(key, value);
+            if (!safeValue) return [];
+
+            const lines = [`${cssKey}: ${safeValue} !important`];
+
+            if (key === "height") {
+              lines.push(`min-height: ${safeValue} !important`);
+            }
+
+            if (key === "width") {
+              lines.push(`max-width: ${safeValue} !important`);
+            }
+
+            return lines;
+          });
+
+        if (!declarations.length) return "";
+
+        return `[data-gpr-id="${String(id).replace(/"/g, '\\\"')}"] { ${declarations.join("; ")}; }`;
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  function editClass(id) {
+    return editing ? ` gpr-editable ${selectedId === id ? "gpr-editable-selected" : ""}` : "";
+  }
+
+  function editable(id, tag, value, extra = {}) {
+    return {
+      "data-gpr-id": dataId(id),
+      className: `${extra.className || ""}${editClass(id)} ${overrideClass(id)}`.trim(),
+      style: {
+        ...(extra.style || {}),
+      },
+      onClick: editing
+        ? (event) => {
+            event.stopPropagation();
+            onSelect?.({
+              id,
+              tag,
+              text: value,
+              styles: overrideStyle(id),
+              classes: overrideClass(id),
+              reactPath: id,
+            });
+          }
+        : extra.onClick,
+    };
+  }
+
+  function editableMedia(id, mediaType, mediaUrl, extra = {}) {
+    return {
+      "data-gpr-id": dataId(id),
+      className: `${extra.className || ""}${editClass(id)} ${overrideClass(id)}`.trim(),
+      style: {
+        ...(extra.style || {}),
+      },
+      onClick: editing
+        ? (event) => {
+            event.stopPropagation();
+            onSelect?.({
+              id,
+              tag: mediaType === "video" ? "video" : "image",
+              text: undefined,
+              mediaUrl: mediaUrl || "",
+              mediaType,
+              styles: overrideStyle(id),
+              classes: overrideClass(id),
+              reactPath: id,
+            });
+          }
+        : extra.onClick,
+    };
+  }
+
+
+  const getSelectedElement = useCallback(() => {
+    if (!editing || !selectedId || !rootRef.current) return null;
+    const safeId = typeof CSS !== "undefined" && CSS.escape
+      ? CSS.escape(selectedId)
+      : String(selectedId).replace(/"/g, '\\"');
+    return rootRef.current.querySelector(`[data-gpr-id="${safeId}"]`);
+  }, [editing, selectedId]);
+
+  const refreshOverlayRect = useCallback(() => {
+    const root = rootRef.current;
+    const el = getSelectedElement();
+
+    if (!root || !el) {
+      setOverlayRect(null);
+      return;
+    }
+
+    const rootBox = root.getBoundingClientRect();
+    const elBox = el.getBoundingClientRect();
+
+    setOverlayRect({
+      left: elBox.left - rootBox.left + root.scrollLeft,
+      top: elBox.top - rootBox.top + root.scrollTop,
+      width: elBox.width,
+      height: elBox.height,
+    });
+  }, [getSelectedElement]);
+
+  useLayoutEffect(() => {
+    refreshOverlayRect();
+  }, [refreshOverlayRect, website, selectedId, editing]);
+
+  useEffect(() => {
+    if (!editing) {
+      setOverlayRect(null);
+      return undefined;
+    }
+
+    const onFrame = () => refreshOverlayRect();
+    window.addEventListener("resize", onFrame);
+    window.addEventListener("scroll", onFrame, true);
+
+    const timer = window.setInterval(onFrame, 500);
+
+    return () => {
+      window.removeEventListener("resize", onFrame);
+      window.removeEventListener("scroll", onFrame, true);
+      window.clearInterval(timer);
+    };
+  }, [editing, refreshOverlayRect]);
+
+  const getBaseTransform = (id) => {
+    const transform = String(overrides?.[id]?.styles?.transform || "");
+    const match = transform.match(/translate\((-?\d+(?:\.\d+)?)px,\s*(-?\d+(?:\.\d+)?)px\)/);
+    return {
+      x: match ? Number(match[1]) : 0,
+      y: match ? Number(match[2]) : 0,
+    };
+  };
+
+  const startProOverlayDrag = (mode, event) => {
+    if (!editing || !selectedId || !onUpdate || !overlayRect) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const el = getSelectedElement();
+    if (!el) return;
+
+    const baseTransform = getBaseTransform(selectedId);
+
+    overlayDragRef.current = {
+      mode,
+      el,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect: { ...overlayRect },
+      baseX: baseTransform.x,
+      baseY: baseTransform.y,
+    };
+
+    const onMove = (moveEvent) => {
+      const drag = overlayDragRef.current;
+      if (!drag) return;
+
+      const dx = moveEvent.clientX - drag.startX;
+      const dy = moveEvent.clientY - drag.startY;
+
+      let next = { ...drag.startRect };
+
+      if (drag.mode === "move") {
+        next.left = drag.startRect.left + dx;
+        next.top = drag.startRect.top + dy;
+
+        drag.el.style.transform = `translate(${Math.round(drag.baseX + dx)}px, ${Math.round(drag.baseY + dy)}px)`;
+        drag.el.style.position = "relative";
+        drag.el.style.zIndex = "20";
+      }
+
+      if (drag.mode.includes("e")) {
+        next.width = Math.max(24, drag.startRect.width + dx);
+      }
+
+      if (drag.mode.includes("s")) {
+        next.height = Math.max(24, drag.startRect.height + dy);
+      }
+
+      if (drag.mode.includes("w")) {
+        next.left = drag.startRect.left + dx;
+        next.width = Math.max(24, drag.startRect.width - dx);
+      }
+
+      if (drag.mode.includes("n")) {
+        next.top = drag.startRect.top + dy;
+        next.height = Math.max(24, drag.startRect.height - dy);
+      }
+
+      if (drag.mode !== "move") {
+        drag.el.style.width = `${Math.round(next.width)}px`;
+        drag.el.style.height = `${Math.round(next.height)}px`;
+        drag.el.style.minHeight = `${Math.round(next.height)}px`;
+        drag.el.style.maxWidth = `${Math.round(next.width)}px`;
+        drag.el.style.display = "inline-block";
+      }
+
+      setOverlayRect(next);
+    };
+
+    const onUp = (upEvent) => {
+      const drag = overlayDragRef.current;
+      overlayDragRef.current = null;
+
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+
+      if (!drag) return;
+
+      const dx = upEvent.clientX - drag.startX;
+      const dy = upEvent.clientY - drag.startY;
+
+      if (Math.abs(dx) + Math.abs(dy) < 2) return;
+
+      if (drag.mode === "move") {
+        onUpdate(selectedId, {
+          styles: {
+            transform: `translate(${Math.round(drag.baseX + dx)}px, ${Math.round(drag.baseY + dy)}px)`,
+            position: "relative",
+            zIndex: "20",
+          },
+        });
+        return;
+      }
+
+      const width = Math.round(Math.max(24, overlayRect.width + (drag.mode.includes("e") ? dx : drag.mode.includes("w") ? -dx : 0)));
+      const height = Math.round(Math.max(24, overlayRect.height + (drag.mode.includes("s") ? dy : drag.mode.includes("n") ? -dy : 0)));
+
+      onUpdate(selectedId, {
+        styles: {
+          width: `${width}px`,
+          maxWidth: `${width}px`,
+          height: `${height}px`,
+          minHeight: `${height}px`,
+          display: "inline-block",
+        },
+      });
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      {...editable("site", "site wrapper", undefined, {
+        className: "gpr-site",
+        style: {
+          "--gpr-primary": primary,
+          "--gpr-secondary": secondary,
+        },
+      })}
+    >
+      {(heroVideoUrl || heroPosterUrl) && (
+        <div
+          {...editableMedia(
+            heroVideoUrl ? "mediaAssets.heroVideoUrl" : "mediaAssets.heroImageUrl",
+            heroVideoUrl ? "video" : "image",
+            heroVideoUrl || heroPosterUrl,
+            { className: "gpr-media-bg" }
+          )}
+        >
+          {heroVideoUrl ? (
+            <video src={heroVideoUrl} poster={heroPosterUrl} autoPlay muted loop playsInline />
+          ) : (
+            <img src={heroPosterUrl} alt="" />
+          )}
+        </div>
+      )}
+
+      {overlayRect && selectedId && editing && (
+        <div
+          className="gpr-pro-overlay"
+          style={{
+            left: `${overlayRect.left}px`,
+            top: `${overlayRect.top}px`,
+            width: `${overlayRect.width}px`,
+            height: `${overlayRect.height}px`,
+          }}
+        >
+          <div className="gpr-pro-overlay-label">
+            {selectedId}
+            <span>drag / resize</span>
+          </div>
+
+          <div className="gpr-pro-move" onMouseDown={(event) => startProOverlayDrag("move", event)} />
+          {["n", "s", "e", "w", "ne", "nw", "se", "sw"].map((handle) => (
+            <div
+              key={handle}
+              className={`gpr-pro-handle gpr-pro-handle-${handle}`}
+              onMouseDown={(event) => startProOverlayDrag(handle, event)}
+            />
+          ))}
+        </div>
+      )}
+
+      <style>{buildOverrideCss()}</style>
+
+      <style>{`
+        .gpr-editable {
+          cursor: pointer;
+          outline: 1px dashed rgba(124,255,178,.34);
+          outline-offset: 4px;
+          border-radius: 8px;
+        }
+        .gpr-editable:hover {
+          outline-color: rgba(124,255,178,.95);
+          background: rgba(124,255,178,.045);
+        }
+        .gpr-editable-selected {
+          outline: 2px solid var(--gpr-primary);
+          background: rgba(124,255,178,.075);
+        }
+        .gpr-pro-overlay {
+          position: absolute;
+          z-index: 99999;
+          border: 1.5px solid var(--gpr-primary);
+          box-shadow:
+            0 0 0 1px rgba(0,0,0,.45),
+            0 0 0 4px color-mix(in srgb, var(--gpr-primary) 18%, transparent),
+            0 18px 60px rgba(0,0,0,.34);
+          pointer-events: none;
+        }
+        .gpr-pro-overlay-label {
+          position: absolute;
+          left: 0;
+          top: -30px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border-radius: 999px;
+          background: #06130d;
+          color: var(--gpr-primary);
+          border: 1px solid color-mix(in srgb, var(--gpr-primary) 45%, transparent);
+          padding: 6px 10px;
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: .04em;
+          white-space: nowrap;
+          box-shadow: 0 10px 32px rgba(0,0,0,.35);
+        }
+        .gpr-pro-move {
+          position: absolute;
+          inset: -8px;
+          cursor: move;
+          pointer-events: auto;
+        }
+        .gpr-pro-handle {
+          position: absolute;
+          width: 12px;
+          height: 12px;
+          border-radius: 999px;
+          background: var(--gpr-primary);
+          border: 2px solid #05100b;
+          box-shadow: 0 0 0 1px rgba(255,255,255,.22), 0 0 18px color-mix(in srgb, var(--gpr-primary) 55%, transparent);
+          pointer-events: auto;
+        }
+        .gpr-pro-handle-n { top: -7px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .gpr-pro-handle-s { bottom: -7px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .gpr-pro-handle-e { right: -7px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+        .gpr-pro-handle-w { left: -7px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+        .gpr-pro-handle-ne { right: -7px; top: -7px; cursor: nesw-resize; }
+        .gpr-pro-handle-nw { left: -7px; top: -7px; cursor: nwse-resize; }
+        .gpr-pro-handle-se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+        .gpr-pro-handle-sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+        .gpr-site {
+          min-height: 100%;
+          position: relative;
+          color: #f8fafc;
+          background:
+            radial-gradient(circle at 18% 10%, color-mix(in srgb, var(--gpr-primary) 28%, transparent), transparent 32%),
+            radial-gradient(circle at 85% 15%, rgba(96,165,250,.18), transparent 30%),
+            linear-gradient(135deg, #050509 0%, #0b0f18 52%, #050509 100%);
+          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          overflow: hidden;
+        }
+        .gpr-media-bg {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          pointer-events: ${editing ? "auto" : "none"};
+          opacity: .34;
+        }
+        .gpr-media-bg video,
+        .gpr-media-bg img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          filter: saturate(1.08) contrast(1.12);
+        }
+        .gpr-media-bg::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--gpr-primary) 22%, transparent), transparent 32%),
+            linear-gradient(90deg, rgba(5,5,9,.96), rgba(5,5,9,.72), rgba(5,5,9,.94));
+        }
+        .gpr-wrap {
+          position: relative;
+          z-index: 1;
+          width: min(1180px, calc(100% - 32px));
+          margin: 0 auto;
+        }
+        .gpr-nav {
+          padding: 22px 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .gpr-logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 900;
+          letter-spacing: -.04em;
+        }
+        .gpr-logo-mark {
+          width: 18px;
+          height: 18px;
+          border-radius: 7px;
+          background: var(--gpr-primary);
+          box-shadow: 0 0 28px color-mix(in srgb, var(--gpr-primary) 65%, transparent);
+        }
+        .gpr-nav-links {
+          display: flex;
+          gap: 24px;
+          color: rgba(248,250,252,.68);
+          font-size: 14px;
+        }
+        .gpr-btn {
+          border: 0;
+          border-radius: 999px;
+          background: var(--gpr-primary);
+          color: #04110b;
+          padding: 13px 19px;
+          font-weight: 900;
+          box-shadow: 0 18px 55px color-mix(in srgb, var(--gpr-primary) 28%, transparent);
+        }
+        .gpr-btn-secondary {
+          color: #f8fafc;
+          background: rgba(255,255,255,.075);
+          border: 1px solid rgba(255,255,255,.12);
+          box-shadow: none;
+        }
+        .gpr-hero {
+          min-height: 720px;
+          display: grid;
+          grid-template-columns: 1.05fr .95fr;
+          gap: 54px;
+          align-items: center;
+          padding: 54px 0 78px;
+        }
+        .gpr-eyebrow {
+          width: fit-content;
+          border: 1px solid rgba(255,255,255,.12);
+          background: rgba(255,255,255,.06);
+          color: var(--gpr-primary);
+          border-radius: 999px;
+          padding: 9px 14px;
+          margin-bottom: 22px;
+          font-size: 13px;
+          font-weight: 800;
+        }
+        .gpr-hero h1 {
+          max-width: 760px;
+          margin: 0;
+          font-size: clamp(48px, 7.6vw, 104px);
+          line-height: .88;
+          letter-spacing: -.085em;
+        }
+        .gpr-hero p {
+          max-width: 680px;
+          color: rgba(248,250,252,.68);
+          font-size: 19px;
+          line-height: 1.72;
+          margin: 26px 0 0;
+        }
+        .gpr-actions {
+          display: flex;
+          gap: 14px;
+          margin-top: 32px;
+        }
+        .gpr-stats {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          margin-top: 42px;
+          max-width: 620px;
+        }
+        .gpr-stats div,
+        .gpr-card,
+        .gpr-section-card,
+        .gpr-price-card {
+          border: 1px solid rgba(255,255,255,.12);
+          background: rgba(255,255,255,.055);
+          border-radius: 30px;
+          box-shadow: 0 24px 80px rgba(0,0,0,.18);
+        }
+        .gpr-stats div {
+          padding: 18px;
+        }
+        .gpr-stats strong {
+          display: block;
+          font-size: 22px;
+        }
+        .gpr-stats span {
+          display: block;
+          color: rgba(248,250,252,.68);
+          font-size: 13px;
+          margin-top: 4px;
+        }
+        .gpr-visual {
+          position: relative;
+          min-height: 580px;
+          display: grid;
+          place-items: center;
+        }
+        .gpr-device {
+          position: relative;
+          z-index: 2;
+          width: min(390px, 88vw);
+          min-height: 530px;
+          border-radius: 46px;
+          border: 1px solid rgba(255,255,255,.2);
+          background:
+            linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.035)),
+            radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--gpr-primary) 26%, transparent), transparent 42%);
+          box-shadow: 0 42px 120px rgba(0,0,0,.55);
+          padding: 22px;
+          backdrop-filter: blur(22px);
+        }
+        .gpr-notch {
+          width: 92px;
+          height: 8px;
+          border-radius: 999px;
+          margin: 0 auto 52px;
+          background: rgba(255,255,255,.22);
+        }
+        .gpr-screen {
+          border-radius: 32px;
+          border: 1px solid rgba(255,255,255,.12);
+          background: rgba(0,0,0,.34);
+          padding: 26px;
+        }
+        .gpr-screen span {
+          color: var(--gpr-primary);
+          font-size: 12px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .12em;
+        }
+        .gpr-screen strong {
+          display: block;
+          font-size: 38px;
+          letter-spacing: -.06em;
+          line-height: .95;
+          margin-top: 18px;
+        }
+        .gpr-screen p {
+          color: rgba(248,250,252,.68);
+          font-size: 14px;
+          line-height: 1.55;
+          margin-top: 18px;
+        }
+        .gpr-products {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          margin-top: 18px;
+        }
+        .gpr-products div {
+          height: 118px;
+          border-radius: 24px;
+          background:
+            linear-gradient(180deg, color-mix(in srgb, var(--gpr-primary) 28%, transparent), rgba(255,255,255,.06)),
+            rgba(255,255,255,.06);
+          border: 1px solid rgba(255,255,255,.12);
+          overflow: hidden;
+        }
+        .gpr-products img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          opacity: .86;
+        }
+        .gpr-orb {
+          position: absolute;
+          border-radius: 999px;
+          filter: blur(8px);
+        }
+        .gpr-orb-a {
+          width: 230px;
+          height: 230px;
+          right: 14px;
+          top: 48px;
+          background: color-mix(in srgb, var(--gpr-primary) 24%, transparent);
+        }
+        .gpr-orb-b {
+          width: 160px;
+          height: 160px;
+          left: 22px;
+          bottom: 70px;
+          background: rgba(96,165,250,.2);
+        }
+        .gpr-features,
+        .gpr-pricing-grid,
+        .gpr-gallery {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 18px;
+          padding: 24px 0 80px;
+        }
+        .gpr-card,
+        .gpr-section-card,
+        .gpr-price-card {
+          padding: 28px;
+        }
+        .gpr-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 16px;
+          background: var(--gpr-primary);
+          box-shadow: 0 0 38px color-mix(in srgb, var(--gpr-primary) 45%, transparent);
+          margin-bottom: 20px;
+        }
+        .gpr-card h3,
+        .gpr-section-card h3,
+        .gpr-price-card h3 {
+          margin: 0;
+          font-size: 24px;
+          letter-spacing: -.04em;
+        }
+        .gpr-card p,
+        .gpr-section-card p,
+        .gpr-price-card p,
+        .gpr-price-card li {
+          color: rgba(248,250,252,.68);
+          line-height: 1.65;
+        }
+        .gpr-section-head {
+          margin-bottom: 24px;
+        }
+        .gpr-section-head p,
+        .gpr-cta p {
+          color: var(--gpr-primary);
+          text-transform: uppercase;
+          letter-spacing: .12em;
+          font-size: 13px;
+          font-weight: 900;
+        }
+        .gpr-section-head h2,
+        .gpr-cta h2 {
+          max-width: 790px;
+          margin: 0;
+          font-size: clamp(34px, 5vw, 68px);
+          line-height: .95;
+          letter-spacing: -.07em;
+        }
+        .gpr-section-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 18px;
+          padding-bottom: 80px;
+        }
+        .gpr-section-card-large {
+          grid-row: span 2;
+        }
+        .gpr-number {
+          color: var(--gpr-primary);
+          font-weight: 900;
+          margin-bottom: 28px;
+        }
+        .gpr-chip-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 22px;
+        }
+        .gpr-chip-row span {
+          border: 1px solid rgba(255,255,255,.12);
+          border-radius: 999px;
+          padding: 8px 11px;
+          color: rgba(255,255,255,.78);
+          background: rgba(255,255,255,.045);
+          font-size: 13px;
+        }
+        .gpr-gallery-card {
+          min-height: 260px;
+          border-radius: 30px;
+          overflow: hidden;
+          border: 1px solid rgba(255,255,255,.12);
+          background: rgba(255,255,255,.055);
+          position: relative;
+          box-shadow: 0 24px 80px rgba(0,0,0,.18);
+        }
+        .gpr-gallery-card img {
+          width: 100%;
+          height: 100%;
+          min-height: 260px;
+          object-fit: cover;
+          filter: saturate(1.08) contrast(1.08);
+        }
+        .gpr-gallery-info {
+          position: absolute;
+          left: 18px;
+          right: 18px;
+          bottom: 18px;
+          border: 1px solid rgba(255,255,255,.14);
+          border-radius: 22px;
+          padding: 16px;
+          background: rgba(0,0,0,.48);
+          backdrop-filter: blur(18px);
+        }
+        .gpr-gallery-info span {
+          color: var(--gpr-primary);
+          font-size: 11px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .12em;
+        }
+        .gpr-gallery-info strong {
+          display: block;
+          margin-top: 6px;
+          font-size: 18px;
+        }
+        .gpr-cta {
+          margin: 0 auto 40px;
+          border: 1px solid rgba(255,255,255,.12);
+          border-radius: 38px;
+          padding: 56px;
+          background:
+            radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--gpr-primary) 22%, transparent), transparent 38%),
+            rgba(255,255,255,.055);
+        }
+        .gpr-cta button {
+          margin-top: 26px;
+        }
+        .gpr-footer {
+          padding: 32px 0 48px;
+          display: flex;
+          justify-content: space-between;
+          color: rgba(248,250,252,.68);
+          border-top: 1px solid rgba(255,255,255,.12);
+        }
+        @media (max-width: 900px) {
+          .gpr-nav-links { display: none; }
+          .gpr-hero { grid-template-columns: 1fr; min-height: auto; }
+          .gpr-features,
+          .gpr-pricing-grid,
+          .gpr-section-grid,
+          .gpr-gallery,
+          .gpr-stats { grid-template-columns: 1fr; }
+          .gpr-hero h1 { font-size: 52px; }
+          .gpr-cta { padding: 32px; }
+        }
+      `}</style>
+
+      <div className="gpr-wrap">
+        <nav {...editable("nav", "navigation bar", undefined, { className: "gpr-nav" })}>
+          <div {...editable("brandName", "brand", brandName, { className: "gpr-logo" })}>
+            <span className="gpr-logo-mark" />
+            <span>{brandName}</span>
+          </div>
+
+          <div className="gpr-nav-links">
+            {navigation.slice(0, 6).map((label, idx) => (
+              <span key={`nav-${idx}`} {...editable(`navigation.${idx}`, "nav label", label)}>
+                {label}
+              </span>
+            ))}
+          </div>
+
+          <button {...editable("hero.primaryCta", "nav button", text(hero.primaryCta, "Get Started"), { className: "gpr-btn" })}>
+            {text(hero.primaryCta, "Get Started")}
+          </button>
+        </nav>
+
+        <section {...editable("heroSection", "hero section", undefined, { className: "gpr-hero" })}>
+          <div>
+            <div {...editable("hero.eyebrow", "hero eyebrow", text(hero.eyebrow, industry), { className: "gpr-eyebrow" })}>
+              {text(hero.eyebrow, industry)}
+            </div>
+
+            <h1 {...editable("hero.headline", "hero headline", text(hero.headline, `Premium ${brandName}`))}>
+              {text(hero.headline, `Premium ${brandName}`)}
+            </h1>
+
+            <p {...editable("hero.subheadline", "hero subheadline", text(hero.subheadline, tagline))}>
+              {text(hero.subheadline, tagline)}
+            </p>
+
+            <div {...editable("hero.actions", "hero buttons row", undefined, { className: "gpr-actions" })}>
+              <button {...editable("hero.primaryCta", "button", text(hero.primaryCta, "Get Started"), { className: "gpr-btn" })}>
+                {text(hero.primaryCta, "Get Started")}
+              </button>
+              <button {...editable("hero.secondaryCta", "button", text(hero.secondaryCta, "Explore"), { className: "gpr-btn gpr-btn-secondary" })}>
+                {text(hero.secondaryCta, "Explore")}
+              </button>
+            </div>
+
+            <div {...editable("stats", "stats row", undefined, { className: "gpr-stats" })}>
+              {stats.slice(0, 3).map((stat, idx) => (
+                <div key={`stat-${idx}`} {...editable(`stats.${idx}`, "stat card", undefined)}>
+                  <strong {...editable(`stats.${idx}.title`, "stat title", text(stat.title, ""))}>
+                    {text(stat.title, "")}
+                  </strong>
+                  <span {...editable(`stats.${idx}.label`, "stat label", text(stat.label, ""))}>
+                    {text(stat.label, "")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div {...editable("hero.visual", "hero visual", undefined, { className: "gpr-visual" })}>
+            <div {...editable("hero.device", "hero device", undefined, { className: "gpr-device" })}>
+              <div {...editable("hero.device.notch", "device notch", undefined, { className: "gpr-notch" })} />
+              <div {...editable("hero.device.screen", "device screen", undefined, { className: "gpr-screen" })}>
+                <span {...editable("industry", "industry", industry)}>{industry}</span>
+                <strong {...editable("brandName", "brand", brandName)}>{brandName}</strong>
+                <p {...editable("tagline", "tagline", tagline)}>{tagline}</p>
+              </div>
+
+              <div {...editable("mediaAssets.collectionImages", "mini image row", undefined, { className: "gpr-products" })}>
+                {[0, 1, 2].map((idx) => (
+                  <div key={`mini-${idx}`} {...editable(`mediaAssets.collectionImages.${idx}`, "image card", undefined)}>
+                    {collectionImages[idx]?.imageUrl ? (
+                      <img
+                        src={collectionImages[idx].imageUrl}
+                        alt={collectionImages[idx].title || ""}
+                        {...editableMedia(
+                          `mediaAssets.collectionImages.${idx}.imageUrl`,
+                          "image",
+                          collectionImages[idx].imageUrl
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div {...editable("hero.orbA", "decor orb", undefined, { className: "gpr-orb gpr-orb-a" })} />
+            <div {...editable("hero.orbB", "decor orb", undefined, { className: "gpr-orb gpr-orb-b" })} />
+          </div>
+        </section>
+
+        <section {...editable("features", "features section", undefined, { className: "gpr-features" })}>
+          {features.slice(0, 9).map((item, index) => (
+            <article key={`feature-${index}`} {...editable(`features.${index}`, "feature card", undefined, { className: "gpr-card" })}>
+              <div {...editable(`features.${index}.icon`, "feature icon", undefined, { className: "gpr-icon" })} />
+              <h3 {...editable(`features.${index}.title`, "feature title", text(item.title, "Premium Feature"))}>
+                {text(item.title, "Premium Feature")}
+              </h3>
+              <p {...editable(`features.${index}.description`, "feature description", text(item.description, "Premium section description."))}>
+                {text(item.description, "Premium section description.")}
+              </p>
+            </article>
+          ))}
+        </section>
+
+        <section {...editable("sectionsArea", "sections area", undefined)}>
+          <div {...editable("sectionIntro", "section intro", undefined, { className: "gpr-section-head" })}>
+            <p {...editable("sectionIntro.eyebrow", "section eyebrow", text(state.sectionIntro?.eyebrow, "Experience Architecture"))}>
+              {text(state.sectionIntro?.eyebrow, "Experience Architecture")}
+            </p>
+            <h2 {...editable("sectionIntro.headline", "section headline", text(state.sectionIntro?.headline, "Designed like a premium product launch"))}>
+              {text(state.sectionIntro?.headline, "Designed like a premium product launch")}
+            </h2>
+          </div>
+
+          <div {...editable("sections", "section cards grid", undefined, { className: "gpr-section-grid" })}>
+            {sections.slice(0, 6).map((section, index) => (
+              <article
+                key={`section-${index}`}
+                {...editable(`sections.${index}`, "section card", undefined, {
+                  className: `gpr-section-card ${index === 0 ? "gpr-section-card-large" : ""}`,
+                })}
+              >
+                <div {...editable(`sections.${index}.number`, "section number", `0${index + 1}`, { className: "gpr-number" })}>
+                  0{index + 1}
+                </div>
+                <h3 {...editable(`sections.${index}.title`, "section title", text(section.title, "Premium Section"))}>
+                  {text(section.title, "Premium Section")}
+                </h3>
+                <p {...editable(`sections.${index}.description`, "section description", text(section.description, "Premium section copy."))}>
+                  {text(section.description, "Premium section copy.")}
+                </p>
+                <div {...editable(`sections.${index}.items`, "chips row", undefined, { className: "gpr-chip-row" })}>
+                  {list(section.items, ["Premium", "Modern", "Responsive"]).slice(0, 8).map((item, idx) => (
+                    <span key={`chip-${index}-${idx}`} {...editable(`sections.${index}.items.${idx}`, "chip", item)}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {collectionImages.length > 0 && (
+          <section {...editable("mediaGallery", "media gallery", undefined)}>
+            <div {...editable("galleryIntro", "gallery intro", undefined, { className: "gpr-section-head" })}>
+              <p {...editable("galleryIntro.eyebrow", "gallery eyebrow", text(state.galleryIntro?.eyebrow, "Visual Direction"))}>
+                {text(state.galleryIntro?.eyebrow, "Visual Direction")}
+              </p>
+              <h2 {...editable("galleryIntro.headline", "gallery headline", text(state.galleryIntro?.headline, "Real media matched to the project subject"))}>
+                {text(state.galleryIntro?.headline, "Real media matched to the project subject")}
+              </h2>
+            </div>
+
+            <div {...editable("mediaAssets.collectionImages", "gallery grid", undefined, { className: "gpr-gallery" })}>
+              {collectionImages.slice(0, 6).map((item, index) => (
+                <article key={`gallery-${index}`} {...editable(`mediaAssets.collectionImages.${index}`, "gallery card", undefined, { className: "gpr-gallery-card" })}>
+                  <img
+                    src={item.imageUrl}
+                    alt={item.title || ""}
+                    {...editableMedia(`mediaAssets.collectionImages.${index}.imageUrl`, "image", item.imageUrl)}
+                  />
+                  <div {...editable(`mediaAssets.collectionImages.${index}.info`, "gallery info", undefined, { className: "gpr-gallery-info" })}>
+                    <span {...editable(`mediaAssets.collectionImages.${index}.tag`, "image tag", text(item.tag, "Premium"))}>
+                      {text(item.tag, "Premium")}
+                    </span>
+                    <strong {...editable(`mediaAssets.collectionImages.${index}.subtitle`, "image subtitle", text(item.subtitle || item.title, industry))}>
+                      {text(item.subtitle || item.title, industry)}
+                    </strong>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {pricing.length > 0 && (
+          <section {...editable("pricing", "pricing section", undefined)}>
+            <div {...editable("pricingIntro", "pricing intro", undefined, { className: "gpr-section-head" })}>
+              <p {...editable("pricingIntro.eyebrow", "pricing eyebrow", text(state.pricingIntro?.eyebrow, "Offers"))}>
+                {text(state.pricingIntro?.eyebrow, "Offers")}
+              </p>
+              <h2 {...editable("pricingIntro.headline", "pricing headline", text(state.pricingIntro?.headline, "Choose the right experience"))}>
+                {text(state.pricingIntro?.headline, "Choose the right experience")}
+              </h2>
+            </div>
+
+            <div {...editable("pricing", "pricing grid", undefined, { className: "gpr-pricing-grid" })}>
+              {pricing.slice(0, 3).map((plan, index) => (
+                <article key={`price-${index}`} {...editable(`pricing.${index}`, "price card", undefined, { className: "gpr-price-card" })}>
+                  <p {...editable(`pricing.${index}.name`, "plan name", text(plan.name, "Plan"))}>{text(plan.name, "Plan")}</p>
+                  <h3 {...editable(`pricing.${index}.price`, "plan price", text(plan.price, "Custom"))}>{text(plan.price, "Custom")}</h3>
+                  <p {...editable(`pricing.${index}.description`, "plan description", text(plan.description, "Premium offer."))}>
+                    {text(plan.description, "Premium offer.")}
+                  </p>
+                  <ul {...editable(`pricing.${index}.features`, "plan features", undefined)}>
+                    {list(plan.features, ["Premium design", "Responsive build", "Launch ready"]).slice(0, 6).map((f, i) => (
+                      <li key={`pf-${index}-${i}`} {...editable(`pricing.${index}.features.${i}`, "plan feature", f)}>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section {...editable("footerCta", "footer CTA", undefined, { className: "gpr-cta" })}>
+          <p {...editable("industry", "footer eyebrow", industry)}>{industry}</p>
+          <h2 {...editable("footer.headline", "footer headline", text(footer.headline, `Ready to launch ${brandName}?`))}>
+            {text(footer.headline, `Ready to launch ${brandName}?`)}
+          </h2>
+          <button {...editable("footer.cta", "footer button", text(footer.cta, text(hero.primaryCta, "Start Now")), { className: "gpr-btn" })}>
+            {text(footer.cta, text(hero.primaryCta, "Start Now"))}
+          </button>
+        </section>
+
+        <footer {...editable("footer", "footer", undefined, { className: "gpr-footer" })}>
+          <span {...editable("brandName", "footer brand", brandName)}>{brandName}</span>
+          <span {...editable("tagline", "footer tagline", tagline)}>{tagline}</span>
+        </footer>
+      </div>
+    </div>
+  );
+}
