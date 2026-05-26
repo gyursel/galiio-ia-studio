@@ -453,6 +453,11 @@ export default function Studio() {
     setSelected(null);
   };
 
+  const handleOpenLivePreview = () => {
+    const pagePath = encodeURIComponent(activePath || "/");
+    window.open(`/preview/${projectId}?path=${pagePath}`, "_blank", "noopener,noreferrer");
+  };
+
   const handleInsertComponent = (cmp) => {
     if (!editing) {
       toast.message("Enable Edit mode to insert components");
@@ -606,6 +611,7 @@ export default function Studio() {
           onInsertComponent={handleInsertComponent}
           rightTab={rightTab}
           onRightTabChange={setRightTab}
+          onLivePreview={handleOpenLivePreview}
         />
       </div>
 

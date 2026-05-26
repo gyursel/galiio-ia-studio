@@ -9,6 +9,7 @@ import {
   Check,
   Code2,
   MousePointer2,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import InspectorPanel from "@/components/studio/InspectorPanel";
@@ -36,6 +37,7 @@ export default function CodePanel({
   onInsertComponent,
   rightTab,
   onRightTabChange,
+  onLivePreview,
 }) {
   const [copied, setCopied] = React.useState(false);
   const value = activePage?.[activeTab] || "";
@@ -79,6 +81,13 @@ export default function CodePanel({
           }`}
         >
           <MousePointer2 className="w-3.5 h-3.5" /> Inspect
+        </button>
+        <button
+          data-testid="right-tab-live-preview-btn"
+          onClick={onLivePreview}
+          className="flex-1 h-9 text-xs font-medium flex items-center justify-center gap-1.5 border-b-2 border-transparent text-zinc-500 hover:text-zinc-200 transition-colors"
+        >
+          <Eye className="w-3.5 h-3.5" /> Live Preview
         </button>
       </div>
 

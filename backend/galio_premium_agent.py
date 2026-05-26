@@ -41,7 +41,7 @@ def _default_state(prompt: str):
     subject = _slug_subject(prompt)
     dark = any(w in prompt.lower() for w in ["dark", "black", "тъмен", "черен", "premium", "luxury"])
     green = any(w in prompt.lower() for w in ["green", "neon", "елект", "зелен"])
-    primary = "#7CFFB2" if green else "#8b5cf6"
+    primary = "#7CFFB2" if green else "#F59E0B"
     secondary = "#07070a" if dark else "#f8fafc"
 
     return {
@@ -205,7 +205,7 @@ def render_premium_website(state: dict):
     brand = _txt(state.get("brandName"), "Galio Studio")
     tagline = _txt(state.get("tagline"), "Premium digital experience")
     industry = _txt(state.get("industry"), "premium brand")
-    primary = _txt(state.get("primaryColor"), "#7CFFB2")
+    primary = _txt(state.get("primaryColor"), "#F59E0B")
     secondary = _txt(state.get("secondaryColor"), "#07070a")
 
     hero = state.get("hero") if isinstance(state.get("hero"), dict) else {}

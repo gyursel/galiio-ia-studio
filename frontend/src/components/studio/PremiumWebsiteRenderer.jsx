@@ -793,7 +793,7 @@ export default function PremiumWebsiteRenderer({
             radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--gpr-primary) 26%, transparent), transparent 42%);
           box-shadow: 0 42px 120px rgba(0,0,0,.55);
           padding: 22px;
-          backdrop-filter: blur(22px);
+          backdrop-filter: blur(12px);
         }
         .gpr-notch {
           width: 92px;
@@ -852,7 +852,7 @@ export default function PremiumWebsiteRenderer({
         .gpr-orb {
           position: absolute;
           border-radius: 999px;
-          filter: blur(8px);
+          filter: saturate(1.18) contrast(1.08) brightness(.92);
         }
         .gpr-orb-a {
           width: 230px;
@@ -975,7 +975,7 @@ export default function PremiumWebsiteRenderer({
           border-radius: 22px;
           padding: 16px;
           background: rgba(0,0,0,.48);
-          backdrop-filter: blur(18px);
+          backdrop-filter: blur(10px);
         }
         .gpr-gallery-info span {
           color: var(--gpr-primary);
@@ -989,6 +989,49 @@ export default function PremiumWebsiteRenderer({
           margin-top: 6px;
           font-size: 18px;
         }
+        html {
+          scroll-behavior: smooth;
+        }
+        .gpr-nav-links a {
+          color: inherit;
+          text-decoration: none;
+          cursor: pointer;
+          transition: color .22s ease, transform .22s ease, text-shadow .22s ease;
+        }
+        .gpr-nav-links a:hover {
+          color: var(--gpr-primary);
+          transform: translateY(-2px);
+          text-shadow: 0 0 18px color-mix(in srgb, var(--gpr-primary) 70%, transparent);
+        }
+        .gpr-btn {
+          position: relative;
+          overflow: hidden;
+          cursor: pointer;
+          transition: transform .22s ease, box-shadow .22s ease, filter .22s ease;
+        }
+        .gpr-btn::before {
+          content: "";
+          position: absolute;
+          inset: -2px;
+          background: linear-gradient(120deg, transparent, rgba(255,255,255,.42), transparent);
+          transform: translateX(-120%);
+          transition: transform .55s ease;
+          pointer-events: none;
+        }
+        .gpr-btn:hover {
+          transform: translateY(-3px) scale(1.025);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--gpr-primary) 50%, transparent),
+            0 18px 45px color-mix(in srgb, var(--gpr-primary) 28%, transparent);
+          filter: brightness(1.06);
+        }
+        .gpr-btn:hover::before {
+          transform: translateX(120%);
+        }
+        .gpr-btn:active {
+          transform: translateY(-1px) scale(.99);
+        }
+
         .gpr-cta {
           margin: 0 auto 40px;
           border: 1px solid rgba(255,255,255,.12);
@@ -1008,6 +1051,88 @@ export default function PremiumWebsiteRenderer({
           color: rgba(248,250,252,.68);
           border-top: 1px solid rgba(255,255,255,.12);
         }
+
+        .gpr-nav {
+          scroll-margin-top: 24px;
+        }
+
+        #experience,
+        #features,
+        #work,
+        #gallery,
+        #pricing,
+        #contact {
+          scroll-margin-top: 96px;
+        }
+
+        .gpr-nav-links a {
+          cursor: pointer;
+        }
+
+        .gpr-btn {
+          transform-style: preserve-3d;
+          perspective: 900px;
+          border: 1px solid color-mix(in srgb, var(--gpr-primary) 38%, rgba(255,255,255,.18));
+          box-shadow:
+            0 10px 0 color-mix(in srgb, var(--gpr-primary) 24%, #000),
+            0 22px 55px color-mix(in srgb, var(--gpr-primary) 22%, transparent),
+            inset 0 1px 0 rgba(255,255,255,.45);
+        }
+
+        .gpr-btn:hover {
+          transform: translateY(-6px) rotateX(7deg) rotateY(-4deg) scale(1.035);
+          box-shadow:
+            0 14px 0 color-mix(in srgb, var(--gpr-primary) 22%, #000),
+            0 28px 75px color-mix(in srgb, var(--gpr-primary) 36%, transparent),
+            0 0 34px color-mix(in srgb, var(--gpr-primary) 42%, transparent),
+            inset 0 1px 0 rgba(255,255,255,.55);
+        }
+
+        .gpr-btn:active {
+          transform: translateY(1px) scale(.985);
+          box-shadow:
+            0 5px 0 color-mix(in srgb, var(--gpr-primary) 24%, #000),
+            0 14px 38px color-mix(in srgb, var(--gpr-primary) 24%, transparent);
+        }
+
+        .gpr-gallery-card {
+          cursor: pointer;
+          transform: translateZ(0) scale(1);
+          transition: transform .34s cubic-bezier(.2,.8,.2,1), box-shadow .34s ease, border-color .34s ease;
+          will-change: transform;
+        }
+
+        .gpr-gallery-card img {
+          transition: transform .42s cubic-bezier(.2,.8,.2,1), filter .34s ease;
+          will-change: transform;
+        }
+
+        .gpr-gallery-card:hover {
+          transform: translateY(-8px) scale(1.035);
+          border-color: color-mix(in srgb, var(--gpr-primary) 42%, rgba(255,255,255,.16));
+          box-shadow:
+            0 24px 70px rgba(0,0,0,.38),
+            0 0 38px color-mix(in srgb, var(--gpr-primary) 22%, transparent);
+        }
+
+        .gpr-gallery-card:hover img {
+          transform: scale(1.09);
+          filter: brightness(1.08) contrast(1.06);
+        }
+
+
+        .gpr-media-bg video {
+          filter: saturate(1.2) contrast(1.08) brightness(.9) !important;
+          transform: scale(1.015);
+          image-rendering: auto;
+        }
+
+        .gpr-media-bg::after {
+          background:
+            radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--gpr-primary) 18%, transparent), transparent 34%),
+            linear-gradient(90deg, rgba(0,0,0,.66), rgba(0,0,0,.28) 48%, rgba(0,0,0,.5)) !important;
+        }
+
         @media (max-width: 900px) {
           .gpr-nav-links { display: none; }
           .gpr-hero { grid-template-columns: 1fr; min-height: auto; }
@@ -1047,11 +1172,18 @@ export default function PremiumWebsiteRenderer({
           </div>
 
           <div className="gpr-nav-links">
-            {navigation.slice(0, 6).map((label, idx) => (
-              <span key={`nav-${idx}`} {...editable(`navigation.${idx}`, "nav label", label)}>
-                {label}
-              </span>
-            ))}
+            {navigation.slice(0, 6).map((label, idx) => {
+              const navTargets = ["#experience", "#features", "#work", "#contact", "#pricing", "#gallery"];
+              return (
+                <a
+                  key={`nav-${idx}`}
+                  href={navTargets[idx] || "#experience"}
+                  {...editable(`navigation.${idx}`, "nav label", label)}
+                >
+                  {label}
+                </a>
+              );
+            })}
           </div>
 
           <button {...editable("hero.primaryCta", "nav button", text(hero.primaryCta, "Get Started"), { className: "gpr-btn" })}>
@@ -1059,7 +1191,7 @@ export default function PremiumWebsiteRenderer({
           </button>
         </nav>
 
-        <section {...editable("heroSection", "hero section", undefined, { className: "gpr-hero" })}>
+        <section id="experience" {...editable("heroSection", "hero section", undefined, { className: "gpr-hero" })}>
           <div>
             <div {...editable("hero.eyebrow", "hero eyebrow", text(hero.eyebrow, industry), { className: "gpr-eyebrow" })}>
               {text(hero.eyebrow, industry)}
@@ -1129,7 +1261,7 @@ export default function PremiumWebsiteRenderer({
           </div>
         </section>
 
-        <section {...editable("features", "features section", undefined, { className: "gpr-features" })}>
+        <section id="features" {...editable("features", "features section", undefined, { className: "gpr-features" })}>
           {features.slice(0, 9).map((item, index) => (
             <article key={`feature-${index}`} {...editable(`features.${index}`, "feature card", undefined, { className: "gpr-card" })}>
               <div {...editable(`features.${index}.icon`, "feature icon", undefined, { className: "gpr-icon" })} />
@@ -1143,7 +1275,7 @@ export default function PremiumWebsiteRenderer({
           ))}
         </section>
 
-        <section {...editable("sectionsArea", "sections area", undefined)}>
+        <section id="work" {...editable("sectionsArea", "sections area", undefined)}>
           <div {...editable("sectionIntro", "section intro", undefined, { className: "gpr-section-head" })}>
             <p {...editable("sectionIntro.eyebrow", "section eyebrow", text(state.sectionIntro?.eyebrow, "Experience Architecture"))}>
               {text(state.sectionIntro?.eyebrow, "Experience Architecture")}
@@ -1183,7 +1315,7 @@ export default function PremiumWebsiteRenderer({
         </section>
 
         {collectionImages.length > 0 && (
-          <section {...editable("mediaGallery", "media gallery", undefined)}>
+          <section id="gallery" {...editable("mediaGallery", "media gallery", undefined)}>
             <div {...editable("galleryIntro", "gallery intro", undefined, { className: "gpr-section-head" })}>
               <p {...editable("galleryIntro.eyebrow", "gallery eyebrow", text(state.galleryIntro?.eyebrow, "Visual Direction"))}>
                 {text(state.galleryIntro?.eyebrow, "Visual Direction")}
@@ -1216,7 +1348,7 @@ export default function PremiumWebsiteRenderer({
         )}
 
         {pricing.length > 0 && (
-          <section {...editable("pricing", "pricing section", undefined)}>
+          <section id="pricing" {...editable("pricing", "pricing section", undefined)}>
             <div {...editable("pricingIntro", "pricing intro", undefined, { className: "gpr-section-head" })}>
               <p {...editable("pricingIntro.eyebrow", "pricing eyebrow", text(state.pricingIntro?.eyebrow, "Offers"))}>
                 {text(state.pricingIntro?.eyebrow, "Offers")}
@@ -1247,7 +1379,7 @@ export default function PremiumWebsiteRenderer({
           </section>
         )}
 
-        <section {...editable("footerCta", "footer CTA", undefined, { className: "gpr-cta" })}>
+        <section id="contact" {...editable("footerCta", "footer CTA", undefined, { className: "gpr-cta" })}>
           <p {...editable("industry", "footer eyebrow", industry)}>{industry}</p>
           <h2 {...editable("footer.headline", "footer headline", text(footer.headline, `Ready to launch ${brandName}?`))}>
             {text(footer.headline, `Ready to launch ${brandName}?`)}

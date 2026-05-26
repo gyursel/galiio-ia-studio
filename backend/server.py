@@ -1310,6 +1310,148 @@ def _clean_marketing_sentence(value: Any, fallback: str = "", max_words: int = 1
 
     return s
 
+
+def _galio_color_video_director(project_state: Dict[str, Any], prompt: str = "") -> Dict[str, Any]:
+    """
+    Universal Color/Video Director.
+    Does NOT hard-lock to appliances/categories.
+    Uses the newest prompt as source of truth, then picks a premium palette/treatment.
+    """
+    if not isinstance(project_state, dict):
+        project_state = {}
+
+    raw = " ".join([
+        str(prompt or ""),
+        str(project_state.get("industry") or ""),
+        str(project_state.get("brandName") or ""),
+        str(project_state.get("style") or ""),
+    ]).lower()
+
+    palettes = [
+        {
+            "keys": ["ресторант", "restaurant", "food", "кухня", "chef", "pizza", "coffee", "кафе"],
+            "primary": "#F97316",
+            "secondary": "#120A05",
+            "style": "warm cinematic food-grade amber",
+        },
+        {
+            "keys": ["адвокат", "lawyer", "legal", "law firm", "право", "кантора"],
+            "primary": "#D4AF37",
+            "secondary": "#070A12",
+            "style": "luxury legal navy gold",
+        },
+        {
+            "keys": ["кола", "коли", "car", "cars", "auto", "automotive", "автомобил"],
+            "primary": "#38BDF8",
+            "secondary": "#05070A",
+            "style": "glossy automotive blue black",
+        },
+        {
+            "keys": ["яке", "якета", "jacket", "jackets", "fashion", "дрехи", "облекло"],
+            "primary": "#F43F5E",
+            "secondary": "#09090B",
+            "style": "fashion editorial rose black",
+        },
+        {
+            "keys": ["камера", "камери", "фотоапарат", "фотоапарати", "camera", "photography"],
+            "primary": "#F59E0B",
+            "secondary": "#050505",
+            "style": "cinematic camera amber black",
+        },
+        {
+            "keys": ["климатик", "климатици", "air conditioner", "hvac", "ac"],
+            "primary": "#06B6D4",
+            "secondary": "#07131A",
+            "style": "clean cool hvac cyan",
+        },
+        {
+            "keys": ["печка", "печки", "фурна", "oven", "stove", "kitchen appliance"],
+            "primary": "#F59E0B",
+            "secondary": "#0B0705",
+            "style": "premium kitchen warm amber",
+        },
+        {
+            "keys": ["хладилник", "хладилници", "fridge", "refrigerator"],
+            "primary": "#22D3EE",
+            "secondary": "#061016",
+            "style": "fresh appliance ice cyan",
+        },
+        {
+            "keys": ["телефон", "смартфон", "phone", "smartphone", "mobile"],
+            "primary": "#22C55E",
+            "secondary": "#050A07",
+            "style": "tech product green black",
+        },
+    ]
+
+    chosen = None
+    for palette in palettes:
+        if any(k in raw for k in palette["keys"]):
+            chosen = palette
+            break
+
+    if not chosen:
+        # Universal fallback, not purple.
+        fallback_palettes = [
+            {"primary": "#F59E0B", "secondary": "#07070A", "style": "premium amber cinematic"},
+            {"primary": "#06B6D4", "secondary": "#061016", "style": "premium cyan cinematic"},
+            {"primary": "#22C55E", "secondary": "#050A07", "style": "premium emerald cinematic"},
+            {"primary": "#EF4444", "secondary": "#0A0505", "style": "premium red cinematic"},
+            {"primary": "#EAB308", "secondary": "#0A0803", "style": "premium gold cinematic"},
+        ]
+        seed = sum(ord(c) for c in raw) if raw else 0
+        chosen = fallback_palettes[seed % len(fallback_palettes)]
+
+    bad_purple = {
+        "#8b5cf6", "#8B5CF6", "#7c3aed", "#7C3AED",
+        "#a855f7", "#A855F7", "#9333ea", "#9333EA",
+    }
+
+    current_primary = str(project_state.get("primaryColor") or "").strip()
+    current_secondary = str(project_state.get("secondaryColor") or "").strip()
+
+    if not current_primary or current_primary in bad_purple:
+        project_state["primaryColor"] = chosen["primary"]
+
+    if not current_secondary or current_secondary in bad_purple:
+        project_state["secondaryColor"] = chosen["secondary"]
+
+    visual = project_state.get("visualSystem")
+    if not isinstance(visual, dict):
+        visual = {}
+
+    media = project_state.get("mediaAssets")
+    if not isinstance(media, dict):
+        media = {}
+
+    has_video = bool(media.get("heroVideoUrl") or media.get("backgroundVideoUrl"))
+    has_image = bool(media.get("heroImageUrl") or media.get("backgroundImageUrl"))
+
+    visual["backgroundType"] = "video" if has_video else ("image" if has_image else "gradient")
+    visual["videoTreatment"] = {
+        "quality": "clear cinematic",
+        "blur": "none",
+        "overlay": "premium readable dark gradient",
+        "motion": "slow elegant background motion",
+    }
+    visual["colorDirector"] = {
+        "source": "universal-deterministic-director",
+        "palette": chosen["style"],
+        "primaryColor": project_state.get("primaryColor"),
+        "secondaryColor": project_state.get("secondaryColor"),
+    }
+
+    subject_label = str(project_state.get("industry") or project_state.get("brandName") or prompt or "premium brand").strip()
+    visual["backgroundPrompt"] = f"beautiful clear cinematic video background for {subject_label}, {chosen['style']}, sharp premium visuals"
+
+    media["videoQuery"] = f"{subject_label} cinematic premium video background"
+    media["videoTreatment"] = visual["videoTreatment"]
+    project_state["mediaAssets"] = media
+    project_state["visualSystem"] = visual
+
+    return project_state
+
+
 def _normalize_project_state_quality(project_state: Dict[str, Any], prompt: str = "") -> Dict[str, Any]:
     if not isinstance(project_state, dict):
         return {}
@@ -1776,7 +1918,9 @@ async def ai_generate(payload: GenerateRequest, user: User = Depends(get_current
         project_state = make_schema_first_project_state(payload.prompt, current_project_state)
 
     project_state = await _ensure_media_assets_async(project_state, payload.prompt)
+    project_state = _galio_color_video_director(project_state, payload.prompt)
     project_state = normalize_schema_first_project_state(project_state, payload.prompt)
+    project_state = _galio_color_video_director(project_state, payload.prompt)
 
     if page.get("html"):
         version = ProjectVersion(

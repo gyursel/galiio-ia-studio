@@ -290,8 +290,8 @@ def normalize_schema_first_project_state(state: Dict[str, Any], prompt: str = ""
     state["visualSystem"] = visual
 
     state["style"] = _txt(state.get("style"), "schema-first premium responsive")
-    state["primaryColor"] = _txt(state.get("primaryColor"), "#8B5CF6")
-    state["secondaryColor"] = _txt(state.get("secondaryColor"), "#0B1020")
+    state["primaryColor"] = _txt(state.get("primaryColor"), "#F59E0B")
+    state["secondaryColor"] = _txt(state.get("secondaryColor"), "#07070A")
 
     if not isinstance(state.get("overrides"), dict):
         state["overrides"] = {}

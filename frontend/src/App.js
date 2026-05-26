@@ -6,6 +6,7 @@ import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
 import Studio from "@/pages/Studio";
 import AuthCallback from "@/pages/AuthCallback";
+import ProjectPreview from "@/pages/ProjectPreview";
 import "@/App.css";
 
 function ProtectedRoute({ children }) {
@@ -44,6 +45,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <Studio />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/preview/:projectId"
+        element={
+          <ProtectedRoute>
+            <ProjectPreview />
           </ProtectedRoute>
         }
       />
