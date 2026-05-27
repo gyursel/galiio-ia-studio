@@ -94,45 +94,31 @@ export default function Studio() {
       const p = await loadProject();
       await loadMessages();
       await loadVersions();
-      if (p && initialPrompt && !(p.html || p.pages?.[0]?.html) && !autoBuiltRef.current) {
+
+      if (initialPrompt && !autoBuiltRef.current && p) {
         autoBuiltRef.current = true;
-        handleGenerate(initialPrompt, "build");
+        setTimeout(() => handleGenerate(initialPrompt, "build"), 250);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // Disable editing when switching tabs / pages
   useEffect(() => {
     if (editing && !activePage?.html) {
-      setEditing(false);
-      setSelected(null);
+      setRightTab("inspect");
     }
   }, [activePage, editing]);
 
-  const pushHistory = (snapshot) => {
-    setHistory((h) => [...h.slice(-19), snapshot]);
-    setRedoStack([]);
-  };
-
-  const setNestedValue = (obj, path, value) => {
+  const patchProjectStateValue = (state, path, value) => {
+    const clone = JSON.parse(JSON.stringify(state || {}));
     const parts = String(path || "").split(".").filter(Boolean);
-    if (!parts.length) return obj;
+    if (!parts.length) return clone;
 
-    const clone = Array.isArray(obj) ? [...obj] : { ...(obj || {}) };
     let cur = clone;
-
     for (let i = 0; i < parts.length - 1; i += 1) {
       const key = /^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i];
-      const nextKey = parts[i + 1];
-      const shouldBeArray = /^\d+$/.test(nextKey);
-
       if (cur[key] === undefined || cur[key] === null) {
-        cur[key] = shouldBeArray ? [] : {};
-      } else {
-        cur[key] = Array.isArray(cur[key]) ? [...cur[key]] : { ...cur[key] };
+        cur[key] = /^\d+$/.test(parts[i + 1]) ? [] : {};
       }
-
       cur = cur[key];
     }
 
@@ -149,6 +135,7 @@ export default function Studio() {
         css: activePage?.css || "",
         js: activePage?.js || "",
         projectState: nextProjectState,
+        generatedFiles: activePage?.generatedFiles || [],
       });
     } catch {
       toast.error("React edit save failed");
@@ -178,7 +165,8 @@ export default function Studio() {
 
     try {
       if (activePage?.html) {
-        pushHistory({ pages: project.pages });
+        setHistory((h) => [...h, { pages: project.pages }]);
+        setRedoStack([]);
       }
       const result = await aiGenerate({
         project_id: projectId,
@@ -189,16 +177,39 @@ export default function Studio() {
         current_css: activePage?.css || "",
         current_js: activePage?.js || "",
       });
-      const p = await loadProject();
-      await loadMessages();
-      await loadVersions();
-      if (useMode !== "plan" && p) {
-        toast.success(`${useMode === "build" ? "Built" : "Updated"} • ${result.summary?.slice(0, 60)}`);
+
+      let refreshedProject = null;
+      try {
+        refreshedProject = await loadProject();
+      } catch (reloadError) {
+        console.warn("Project reload failed after successful generation", reloadError);
+      }
+
+      try {
+        await loadMessages();
+      } catch (messagesError) {
+        console.warn("Messages reload failed after successful generation", messagesError);
+      }
+
+      try {
+        await loadVersions();
+      } catch (versionsError) {
+        console.warn("Versions reload failed after successful generation", versionsError);
+      }
+
+      if (useMode !== "plan") {
+        toast.success(`${useMode === "build" ? "Built" : "Updated"} • ${result.summary?.slice(0, 60) || "Generated"}`);
       } else {
         toast.success("Plan ready");
       }
     } catch (e) {
-      toast.error(e?.response?.data?.detail?.toString().slice(0, 140) || "Generation failed");
+      const detail =
+        e?.response?.data?.detail ||
+        e?.response?.data?.message ||
+        e?.message ||
+        "Generation failed";
+
+      toast.error(detail.toString().slice(0, 220));
       setMessages((m) => m.filter((x) => x.message_id !== tempUser.message_id));
     } finally {
       setGenerating(false);
@@ -218,9 +229,11 @@ export default function Studio() {
       const lastPage = (last.pages || []).find((p) => p.path === activePath);
       if (!lastPage) return;
       const p = await updatePage(projectId, activePath, {
-        html: lastPage.html,
-        css: lastPage.css,
-        js: lastPage.js,
+        html: lastPage.html || "",
+        css: lastPage.css || "",
+        js: lastPage.js || "",
+        projectState: lastPage.projectState || null,
+        generatedFiles: lastPage.generatedFiles || [],
       });
       const proj = await loadProject();
       setProject(proj);
@@ -241,9 +254,11 @@ export default function Studio() {
       const nextPage = (next.pages || []).find((p) => p.path === activePath);
       if (!nextPage) return;
       await updatePage(projectId, activePath, {
-        html: nextPage.html,
-        css: nextPage.css,
-        js: nextPage.js,
+        html: nextPage.html || "",
+        css: nextPage.css || "",
+        js: nextPage.js || "",
+        projectState: nextPage.projectState || null,
+        generatedFiles: nextPage.generatedFiles || [],
       });
       const proj = await loadProject();
       setProject(proj);
@@ -295,13 +310,68 @@ export default function Studio() {
     }
   };
 
-  const handleCodeChange = (field, value) => {
+  const handleCodeChange = (field, value, fileMeta = null) => {
     setProject((p) => {
+      const updateGeneratedFiles = (page) => {
+        const files = Array.isArray(page.generatedFiles) ? page.generatedFiles : [];
+
+        const targetPath = fileMeta?.path || "";
+        const targetId = fileMeta?.id || "";
+        const targetName = fileMeta?.name || fileMeta?.label || "";
+
+        const syncField =
+          field === "html" || targetPath.endsWith("index.html")
+            ? "html"
+            : field === "css" || targetPath.endsWith("styles.css")
+              ? "css"
+              : field === "js" || targetPath.endsWith("script.js")
+                ? "js"
+                : null;
+
+        const nextPage = syncField ? { ...page, [syncField]: value } : { ...page };
+
+        if (!files.length) {
+          return nextPage;
+        }
+
+        const nextFiles = files.map((file) => {
+          const filePath = file.path || "";
+          const fileId = file.id || "";
+          const fileName = file.name || String(filePath).split("/").pop() || "";
+
+          const isSameGeneratedFile =
+            (targetPath && filePath === targetPath) ||
+            (targetId && fileId === targetId) ||
+            (targetName && fileName === targetName);
+
+          const isHtml = syncField === "html" && (fileId === "html" || filePath.endsWith("index.html"));
+          const isCss = syncField === "css" && (fileId === "css" || filePath.endsWith("styles.css"));
+          const isJs = syncField === "js" && (fileId === "js" || filePath.endsWith("script.js"));
+
+          if (isSameGeneratedFile || isHtml || isCss || isJs) {
+            return { ...file, content: value };
+          }
+
+          return file;
+        });
+
+        return { ...nextPage, generatedFiles: nextFiles };
+      };
+
       const pages = (p.pages || []).map((pg) =>
-        pg.path === activePath ? { ...pg, [field]: value } : pg
+        pg.path === activePath ? updateGeneratedFiles(pg) : pg
       );
+
+      const activeUpdatedPage = pages.find((pg) => pg.path === activePath);
       const top = { ...p, pages };
-      if (activePath === "/") top[field] = value;
+
+      if (activePath === "/" && activeUpdatedPage) {
+        top.html = activeUpdatedPage.html || "";
+        top.css = activeUpdatedPage.css || "";
+        top.js = activeUpdatedPage.js || "";
+        top.generatedFiles = activeUpdatedPage.generatedFiles || [];
+      }
+
       return top;
     });
   };
@@ -327,6 +397,7 @@ export default function Studio() {
         css: activePage.css || "",
         js: activePage.js || "",
         projectState: nextProjectState,
+        generatedFiles: activePage.generatedFiles || [],
       });
 
       const freshProject = await getProject(projectId);
@@ -375,7 +446,37 @@ export default function Studio() {
     setSelected(null);
   };
 
-  const handleInspectorUpdate = (id, patch) => {
+  const setNestedValue = (target, path, value) => {
+  const keys = String(path || "")
+    .replace(/\[(\d+)\]/g, ".$1")
+    .split(".")
+    .filter(Boolean);
+
+  if (!keys.length) return target;
+
+  let cursor = target;
+
+  keys.forEach((key, index) => {
+    const isLast = index === keys.length - 1;
+    const nextKey = keys[index + 1];
+    const shouldBeArray = /^\d+$/.test(nextKey);
+
+    if (isLast) {
+      cursor[key] = value;
+      return;
+    }
+
+    if (cursor[key] === undefined || cursor[key] === null || typeof cursor[key] !== "object") {
+      cursor[key] = shouldBeArray ? [] : {};
+    }
+
+    cursor = cursor[key];
+  });
+
+  return target;
+};
+
+const handleInspectorUpdate = (id, patch) => {
     if (activePage?.projectState) {
       let nextProjectState = activePage.projectState;
 

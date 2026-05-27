@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Box, Image, SlidersHorizontal, Type } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { searchPexelsMedia } from "@/lib/api";
 
 function Section({ icon: Icon, title, children }) {
   return (
@@ -31,6 +32,31 @@ function Row({ children }) {
 }
 
 export default function InspectorPanel({ selected, onUpdate, editing }) {
+  const safeSelected = selected || {};
+  const styles = safeSelected.styles || {};
+
+  const defaultMediaQuery = useMemo(() => {
+    return String(
+      safeSelected.mediaQuery ||
+        safeSelected.label ||
+        safeSelected.alt ||
+        safeSelected.text ||
+        safeSelected.mediaType ||
+        "premium realistic photography"
+    ).slice(0, 80);
+  }, [safeSelected.mediaQuery, safeSelected.label, safeSelected.alt, safeSelected.text, safeSelected.mediaType]);
+
+  const [pexelsQuery, setPexelsQuery] = useState(defaultMediaQuery);
+  const [pexelsType, setPexelsType] = useState(safeSelected.mediaType === "video" ? "video" : "photo");
+  const [pexelsLoading, setPexelsLoading] = useState(false);
+  const [pexelsResults, setPexelsResults] = useState([]);
+
+  useEffect(() => {
+    setPexelsQuery(defaultMediaQuery);
+    setPexelsType(safeSelected.mediaType === "video" ? "video" : "photo");
+    setPexelsResults([]);
+  }, [safeSelected.id, safeSelected.mediaType, defaultMediaQuery]);
+
   if (!editing) {
     return (
       <div className="p-4 text-sm text-zinc-500">
@@ -47,10 +73,27 @@ export default function InspectorPanel({ selected, onUpdate, editing }) {
     );
   }
 
-  const styles = selected.styles || {};
-
   const patchText = (text) => onUpdate(selected.id, { text });
   const patchMediaUrl = (mediaUrl) => onUpdate(selected.id, { mediaUrl });
+
+  const searchPexels = async () => {
+    const q = String(pexelsQuery || defaultMediaQuery || "").trim();
+    if (!q) return;
+
+    setPexelsLoading(true);
+    try {
+      const data = await searchPexelsMedia({
+        q,
+        type: pexelsType,
+        per_page: 18,
+      });
+      setPexelsResults(Array.isArray(data.items) ? data.items : []);
+    } catch (error) {
+      window.alert(error?.response?.data?.detail || error?.message || "Pexels search failed");
+    } finally {
+      setPexelsLoading(false);
+    }
+  };
   const patchClasses = (classes) => onUpdate(selected.id, { classes });
   const deleteElement = () => onUpdate(selected.id, { delete: true });
   const normalizeCssValue = (key, value) => {
@@ -145,6 +188,106 @@ export default function InspectorPanel({ selected, onUpdate, editing }) {
             />
           </Field>
 
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText();
+                  if (text) patchMediaUrl(text.trim());
+                } catch {
+                  window.alert("Clipboard access blocked. Paste the URL manually.");
+                }
+              }}
+              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 text-[11px] font-bold text-zinc-200 hover:bg-zinc-800"
+            >
+              Paste URL
+            </button>
+            <button
+              type="button"
+              onClick={() => selected.mediaUrl && window.open(selected.mediaUrl, "_blank")}
+              disabled={!selected.mediaUrl}
+              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 text-[11px] font-bold text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              onClick={() => patchMediaUrl("")}
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-2 text-[11px] font-bold text-red-300 hover:bg-red-500/20"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-black/30 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                Pexels Picker
+              </div>
+              <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPexelsType("photo")}
+                  className={`rounded-md px-2 py-1 text-[10px] font-bold ${pexelsType === "photo" ? "bg-white text-black" : "text-zinc-500 hover:text-white"}`}
+                >
+                  Photos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPexelsType("video")}
+                  className={`rounded-md px-2 py-1 text-[10px] font-bold ${pexelsType === "video" ? "bg-white text-black" : "text-zinc-500 hover:text-white"}`}
+                >
+                  Videos
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={pexelsQuery}
+                onChange={(e) => setPexelsQuery(e.target.value)}
+                className={inputClass}
+                placeholder="Search Pexels..."
+              />
+              <button
+                type="button"
+                onClick={searchPexels}
+                disabled={pexelsLoading}
+                className="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-bold text-black hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pexelsLoading ? "..." : "Search"}
+              </button>
+            </div>
+
+            {pexelsResults.length ? (
+              <div className="mt-3 grid max-h-72 grid-cols-2 gap-2 overflow-auto pr-1">
+                {pexelsResults.map((item) => (
+                  <button
+                    key={`${item.type}-${item.id}`}
+                    type="button"
+                    onClick={() => patchMediaUrl(item.url)}
+                    className="group overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 text-left hover:border-cyan-400/60"
+                    title={item.alt || item.credit}
+                  >
+                    {item.preview ? (
+                      <img src={item.preview} alt={item.alt || ""} className="h-20 w-full object-cover transition group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-20 items-center justify-center text-xs text-zinc-500">No preview</div>
+                    )}
+                    <div className="truncate px-2 py-1 text-[10px] text-zinc-500">
+                      {item.type} • {item.credit || "Pexels"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-500">
+                Search Pexels and click a result to replace the selected media.
+              </div>
+            )}
+          </div>
+
           {selected.mediaUrl ? (
             <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
               {selected.mediaType === "video" ? (
@@ -153,7 +296,11 @@ export default function InspectorPanel({ selected, onUpdate, editing }) {
                 <img src={selected.mediaUrl} alt="" className="max-h-36 w-full object-cover" />
               )}
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/60 p-4 text-center text-xs text-zinc-500">
+              Pick from Pexels or paste an image/video URL.
+            </div>
+          )}
         </Section>
       ) : null}
 

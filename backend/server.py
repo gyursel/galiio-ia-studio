@@ -72,6 +72,7 @@ class Page(BaseModel):
     css: str = ""
     js: str = ""
     projectState: Optional[Dict[str, Any]] = None
+    generatedFiles: Optional[List[Dict[str, Any]]] = None
 
 
 class Member(BaseModel):
@@ -130,6 +131,8 @@ class PageUpdate(BaseModel):
     css: Optional[str] = None
     js: Optional[str] = None
     projectState: Optional[Dict[str, Any]] = None
+    generatedFiles: Optional[List[Dict[str, Any]]] = None
+    generatedFiles: Optional[List[Dict[str, Any]]] = None
 
 
 class InviteRequest(BaseModel):
@@ -533,6 +536,10 @@ async def update_page(project_id: str, path: str, payload: PageUpdate, user: Use
         if "html" in updates: set_doc["html"] = updates["html"]
         if "css" in updates: set_doc["css"] = updates["css"]
         if "js" in updates: set_doc["js"] = updates["js"]
+        if "projectState" in updates: set_doc["projectState"] = updates["projectState"]
+        if "generatedFiles" in updates: set_doc["generatedFiles"] = updates["generatedFiles"]
+        if "projectState" in updates: set_doc["projectState"] = updates["projectState"]
+        if "generatedFiles" in updates: set_doc["generatedFiles"] = updates["generatedFiles"]
     await db.projects.update_one({"project_id": project_id}, {"$set": set_doc})
     return page
 
@@ -804,31 +811,17 @@ def _galio_clean_subject_from_prompt(prompt: Any = "", fallback: str = "") -> st
 
 
 def _galio_media_keywords_for_subject(subject: str) -> str:
-    s = str(subject or "").lower()
+    """
+    Universal subject-first media query.
 
-    hints = [
-        (["яке", "якета", "jacket", "jackets"], "fashion jacket product photography clothing"),
-        (["кола", "коли", "автомобил", "автомобили", "car", "cars"], "premium car automotive photography"),
-        (["адвокат", "адвокати", "lawyer", "lawyers", "law firm"], "law office lawyer professional"),
-        (["ресторант", "ресторанти", "restaurant", "restaurants"], "restaurant interior dining food"),
-        (["хладилник", "хладилници", "fridge", "refrigerator"], "modern refrigerator kitchen appliance"),
-        (["печка", "печки", "фурна", "фурни", "oven", "stove"], "built in kitchen oven cooking stove appliance"),
-        (["климатик", "климатици", "air conditioner", "hvac"], "air conditioner hvac wall mounted ac"),
-        (["фотоапарат", "фотоапарати", "камера", "camera"], "professional camera product photography"),
-        (["телефон", "телефони", "смартфон", "smartphone", "phone"], "smartphone product close up"),
-        (["обувки", "shoe", "shoes"], "premium shoes product photography"),
-        (["часовник", "часовници", "watch", "watches"], "luxury watch product photography"),
-        (["мебели", "диван", "sofa", "furniture"], "modern furniture interior product"),
-        (["хотел", "хотели", "hotel"], "luxury hotel interior hospitality"),
-        (["фитнес", "gym"], "modern gym fitness interior"),
-    ]
+    Do not map subjects to fixed categories.
+    The latest extracted subject must stay the media query source.
+    """
+    clean = re.sub(r"\s+", " ", str(subject or "").strip())
+    if not clean:
+        return "premium realistic photography"
 
-    for tokens, query in hints:
-        if any(t in s for t in tokens):
-            return query
-
-    return f"{subject} product photography premium brand"
-
+    return f"{clean} premium realistic photography"
 
 def _galio_media_subject(prompt: Any = "", project_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     prompt_subject = _galio_clean_subject_from_prompt(prompt, "")
@@ -1845,6 +1838,111 @@ def _sanitize_generated_project_state_bugfix(project_state: Dict[str, Any], prom
 
     return project_state
 
+
+def _make_generated_files(html: str = "", css: str = "", js: str = "", project_state: Dict[str, Any] | None = None) -> List[Dict[str, Any]]:
+    """Build a stable Hercules-style generated file tree for the frontend editor."""
+    state = project_state if isinstance(project_state, dict) else {}
+
+    def file_doc(file_id: str, path: str, name: str, language: str, content: Any, editable: bool = True, kind: str = "source") -> Dict[str, Any]:
+        if not isinstance(content, str):
+            try:
+                content = json.dumps(content or {}, ensure_ascii=False, indent=2)
+            except Exception:
+                content = "{}"
+
+        return {
+            "id": file_id,
+            "path": path,
+            "name": name,
+            "language": language,
+            "kind": kind,
+            "editable": editable,
+            "content": content or "",
+        }
+
+    return [
+        file_doc("html", "src/generated/index.html", "index.html", "html", html or "", True, "source"),
+        file_doc("css", "src/generated/styles.css", "styles.css", "css", css or "", True, "source"),
+        file_doc("js", "src/generated/script.js", "script.js", "javascript", js or "", True, "source"),
+        file_doc("projectState", "src/generated/projectState.json", "projectState.json", "json", state, False, "schema"),
+        file_doc("theme", "src/generated/theme.json", "theme.json", "json", {
+            "brandName": state.get("brandName"),
+            "industry": state.get("industry"),
+            "primaryColor": state.get("primaryColor"),
+            "secondaryColor": state.get("secondaryColor"),
+            "visualSystem": state.get("visualSystem"),
+        }, False, "schema"),
+        file_doc("media", "src/generated/media.json", "media.json", "json", state.get("mediaAssets") or {}, False, "schema"),
+        file_doc("customCode", "src/generated/customCode.json", "customCode.json", "json", state.get("customCode") or {}, False, "schema"),
+    ]
+
+
+
+@api_router.get("/media/pexels/search")
+async def search_pexels_for_media_picker(
+    q: str,
+    type: str = "photo",
+    per_page: int = 18,
+    user: User = Depends(get_current_user),
+):
+    api_key = os.environ.get("PEXELS_API_KEY", "").strip()
+    query = str(q or "").strip()
+    media_type = str(type or "photo").strip().lower()
+    limit = max(1, min(int(per_page or 18), 30))
+
+    if not api_key:
+        raise HTTPException(status_code=500, detail="PEXELS_API_KEY is missing")
+    if not query:
+        raise HTTPException(status_code=400, detail="Search query is required")
+
+    url = "https://api.pexels.com/videos/search" if media_type == "video" else "https://api.pexels.com/v1/search"
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": api_key},
+            params={"query": query, "per_page": limit, "orientation": "landscape"},
+        )
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+
+    data = resp.json()
+    items = []
+
+    if media_type == "video":
+        for video in data.get("videos", []):
+            files = video.get("video_files") or []
+            files = sorted(files, key=lambda f: int(f.get("width") or 0), reverse=True)
+            video_url = files[0].get("link") if files else ""
+            preview = video.get("image") or ""
+            if video_url:
+                items.append({
+                    "id": str(video.get("id")),
+                    "type": "video",
+                    "url": video_url,
+                    "preview": preview,
+                    "alt": query,
+                    "credit": video.get("user", {}).get("name", "Pexels"),
+                })
+    else:
+        for photo in data.get("photos", []):
+            src = photo.get("src") or {}
+            image_url = src.get("large2x") or src.get("large") or src.get("medium") or photo.get("url")
+            preview = src.get("medium") or src.get("small") or image_url
+            if image_url:
+                items.append({
+                    "id": str(photo.get("id")),
+                    "type": "image",
+                    "url": image_url,
+                    "preview": preview,
+                    "alt": photo.get("alt") or query,
+                    "credit": photo.get("photographer", "Pexels"),
+                })
+
+    return {"query": query, "type": media_type, "items": items}
+
+
 @api_router.post("/ai/generate")
 async def ai_generate(payload: GenerateRequest, user: User = Depends(get_current_user)):
     project = await get_project_for_user(payload.project_id, user, "editor")
@@ -1908,23 +2006,76 @@ async def ai_generate(payload: GenerateRequest, user: User = Depends(get_current
     raw_project_state = parsed.get("projectState") or parsed.get("project_state") or None
     current_project_state = page.get("projectState") if isinstance(page.get("projectState"), dict) else {}
 
+    # Build mode is a fresh generation. Do not leak old projectState/customCode/overrides
+    # into the new subject. Refine/debug may keep context.
+    keep_old_state = payload.mode in ("refine", "debug")
+    base_project_state = current_project_state if keep_old_state else {}
+
     if isinstance(raw_project_state, dict):
+        merged_project_state = {
+            **base_project_state,
+            **raw_project_state,
+        }
+
+        if keep_old_state:
+            merged_project_state["overrides"] = current_project_state.get(
+                "overrides",
+                raw_project_state.get("overrides", {}),
+            )
+            merged_project_state["customElements"] = current_project_state.get(
+                "customElements",
+                raw_project_state.get("customElements", []),
+            )
+        else:
+            merged_project_state["overrides"] = raw_project_state.get("overrides", {})
+            merged_project_state["customElements"] = raw_project_state.get("customElements", [])
+            merged_project_state.pop("customCode", None)
+            merged_project_state.pop("galleryIntro", None)
+
         project_state = normalize_schema_first_project_state(
-            {
-                **current_project_state,
-                **raw_project_state,
-                "overrides": current_project_state.get("overrides", raw_project_state.get("overrides", {})),
-                "customElements": current_project_state.get("customElements", raw_project_state.get("customElements", [])),
-            },
+            merged_project_state,
             payload.prompt,
         )
     else:
-        project_state = make_schema_first_project_state(payload.prompt, current_project_state)
+        project_state = make_schema_first_project_state(payload.prompt, base_project_state)
 
     project_state = await _ensure_media_assets_async(project_state, payload.prompt)
     project_state = _galio_color_video_director(project_state, payload.prompt)
     project_state = normalize_schema_first_project_state(project_state, payload.prompt)
     project_state = _galio_color_video_director(project_state, payload.prompt)
+
+    # Final fresh-build guard:
+    # Build mode must not keep stale subject/custom code/overrides from previous websites.
+    if payload.mode == "build":
+        generation = project_state.get("generation") if isinstance(project_state.get("generation"), dict) else {}
+        subject = str(
+            generation.get("subject")
+            or project_state.get("subject")
+            or project_state.get("mainSubject")
+            or ""
+        ).strip()
+
+        if subject:
+            project_state["subject"] = subject
+            project_state["mainSubject"] = generation.get("mainSubject") or subject
+            project_state["brandName"] = generation.get("brandName") or subject
+
+            hero = project_state.get("hero") if isinstance(project_state.get("hero"), dict) else {}
+            hero["headline"] = generation.get("headlineSubject") or subject
+            project_state["hero"] = hero
+
+            media = project_state.get("media") if isinstance(project_state.get("media"), dict) else {}
+            media["subject"] = generation.get("mediaSubject") or subject
+            if not isinstance(media.get("queries"), list) or not media.get("queries"):
+                media["queries"] = [media["subject"]]
+            project_state["media"] = media
+
+        project_state.pop("customCode", None)
+        project_state.pop("galleryIntro", None)
+        project_state["overrides"] = {}
+        project_state["customElements"] = []
+
+    generated_files = _make_generated_files(new_html, new_css, new_js, project_state)
 
     if page.get("html"):
         version = ProjectVersion(
@@ -1944,6 +2095,7 @@ async def ai_generate(payload: GenerateRequest, user: User = Depends(get_current
                         "html": new_html, "css": new_css, "js": new_js}
             if project_state:
                 page_doc["projectState"] = project_state
+            page_doc["generatedFiles"] = generated_files
             pages.append(page_doc)
         else:
             for p in pages:
@@ -1951,11 +2103,14 @@ async def ai_generate(payload: GenerateRequest, user: User = Depends(get_current
                     p["html"] = new_html; p["css"] = new_css; p["js"] = new_js
                     if project_state:
                         p["projectState"] = project_state
+                    p["generatedFiles"] = generated_files
                     break
 
         set_doc = {"pages": pages, "updated_at": datetime.now(timezone.utc).isoformat()}
         if payload.page_path == "/":
             set_doc["html"] = new_html; set_doc["css"] = new_css; set_doc["js"] = new_js
+            set_doc["projectState"] = project_state
+            set_doc["generatedFiles"] = generated_files
         await db.projects.update_one({"project_id": payload.project_id}, {"$set": set_doc})
 
     asst_msg = ChatMessage(
@@ -1972,6 +2127,7 @@ async def ai_generate(payload: GenerateRequest, user: User = Depends(get_current
         "css": new_css,
         "js": new_js,
         "projectState": project_state,
+        "generatedFiles": generated_files,
         "mode": payload.mode,
     }
 

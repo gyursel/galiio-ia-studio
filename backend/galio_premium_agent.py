@@ -4,6 +4,11 @@ import re
 import html
 import requests
 try:
+    from universal_subject import UNIVERSAL_SUBJECT_AGENT_CONTRACT
+except ImportError:
+    from backend.universal_subject import UNIVERSAL_SUBJECT_AGENT_CONTRACT
+
+try:
     from backend.galio_media import fetch_pexels_media
 except ImportError:
     from galio_media import fetch_pexels_media
@@ -21,33 +26,101 @@ def _arr(value, fallback=None):
     return fallback or []
 
 
-def _slug_subject(prompt: str):
-    text = (prompt or "").lower()
-    patterns = [
-        "website for", "site for", "сайт за", "уебсайт за",
-        "premium website for", "make a", "create a", "направи"
-    ]
-    subject = prompt.strip()
-    for p in patterns:
-        if p in text:
-            idx = text.find(p) + len(p)
-            subject = prompt[idx:].strip()
-            break
-    subject = re.sub(r"\b(with|със|and|и)\b.*$", "", subject, flags=re.I).strip()
-    return subject[:80] or "premium brand"
+_NOISE_WORDS = {
+    "направи", "създай", "генерирай", "ми", "сайт", "уебсайт", "страница",
+    "премиум", "реални", "снимки", "снимка", "видео", "фон", "чист",
+    "минималистичен", "минималистична", "модерен", "модерна", "тъмен", "тъмна",
+    "светъл", "светла", "дизайн", "layout", "с", "за", "и", "или", "на",
+    "от", "по", "при", "към", "без", "но", "а", "со", "със",
+    "make", "create", "build", "generate", "me", "a", "an", "the",
+    "site", "website", "page", "landing", "premium", "real", "photos",
+    "video", "background", "clean", "minimal", "minimalist", "modern",
+    "dark", "light", "with", "and", "or", "for", "of", "design", "layout",
+    "responsive", "luxury", "high", "end", "conversion", "focused",
+}
+
+_STOP_AFTER = [
+    " с реални", " със реални", " с видео", " и видео", " с фон",
+    " видео фон", " с снимки", " с картинки", " с дизайн",
+    " with video", " with real", " with photos", " with background",
+    " dark theme", " light theme", " clean layout", " minimal",
+]
+
+
+def _extract_subject(prompt: str) -> str:
+    s = str(prompt or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(
+        r"^.*?\b(?:сайт|уебсайт|страница|website|site|landing\s*page)\s*(?:за|for)?\s*",
+        "",
+        s,
+        flags=re.I,
+    ).strip()
+    low = s.lower()
+    cut_at = None
+    for phrase in _STOP_AFTER:
+        idx = low.find(phrase)
+        if idx > 0:
+            cut_at = idx if cut_at is None else min(cut_at, idx)
+    if cut_at:
+        s = s[:cut_at].strip()
+    words = []
+    for w in s.split():
+        clean = w.strip(".,!?;:()[]{}\"'`|-")
+        if clean.lower() not in _NOISE_WORDS and clean:
+            words.append(clean)
+    subject = " ".join(words[:4]).strip(".,!?;:")
+    return subject or "Premium Brand"
+
+
+def _title(s: str) -> str:
+    return " ".join(w[:1].upper() + w[1:] for w in str(s or "").split())
 
 
 def _default_state(prompt: str):
-    subject = _slug_subject(prompt)
+    subject = _extract_subject(prompt)
+    subject_title = _title(subject)
     dark = any(w in prompt.lower() for w in ["dark", "black", "тъмен", "черен", "premium", "luxury"])
     green = any(w in prompt.lower() for w in ["green", "neon", "елект", "зелен"])
     primary = "#7CFFB2" if green else "#F59E0B"
     secondary = "#07070a" if dark else "#f8fafc"
-
+    bg = bool(re.search(r"[а-яА-Я]", prompt))
+    if bg:
+        tagline = f"Премиум онлайн присъствие за {subject_title}"
+        headline = subject_title
+        subheadline = f"Модерен уебсайт за {subject_title} с изчистен дизайн и силно послание."
+        eyebrow = "Премиум Преживяване"
+        cta1 = "Разгледай"
+        cta2 = "Научи повече"
+        footer_headline = f"Готов да стартираш с {subject_title}?"
+        footer_cta = "Започни сега"
+        sec_titles = ["Предимства", "Колекция", "Качество"]
+        sec_desc = f"Премиум представяне за {subject_title}."
+        feat = [
+            {"title": "Премиум Дизайн", "description": f"Изчистена модерна визия за {subject_title}."},
+            {"title": "Бързо Зареждане", "description": "Оптимизиран код за максимална скорост."},
+            {"title": "Силно Послание", "description": f"Съдържание насочено към {subject_title}."},
+        ]
+    else:
+        tagline = f"Premium digital experience for {subject_title}"
+        headline = subject_title
+        subheadline = f"A premium website for {subject_title} — clean design, strong message, built to convert."
+        eyebrow = "Premium Experience"
+        cta1 = "Explore"
+        cta2 = "Learn More"
+        footer_headline = f"Ready to launch {subject_title}?"
+        footer_cta = "Start Now"
+        sec_titles = ["Our Advantage", "Collection", "Quality"]
+        sec_desc = f"Premium presentation for {subject_title}."
+        feat = [
+            {"title": "Premium Design", "description": f"Clean modern visuals for {subject_title}."},
+            {"title": "Fast Experience", "description": "Optimized for speed and smooth navigation."},
+            {"title": "Strong Messaging", "description": f"Copy focused entirely on {subject_title}."},
+        ]
     return {
-        "brandName": subject.title()[:42],
-        "tagline": f"Premium digital experience for {subject}",
-        "industry": subject,
+        "brandName": subject_title,
+        "tagline": tagline,
+        "industry": subject_title,
         "style": "dark premium cinematic, modern, responsive, conversion focused",
         "primaryColor": primary,
         "secondaryColor": secondary,
@@ -58,130 +131,392 @@ def _default_state(prompt: str):
             "details": ["premium spacing", "glass cards", "large typography", "conversion focused"],
         },
         "hero": {
-            "eyebrow": "Premium Experience",
-            "headline": f"Premium {subject.title()} Built For Modern Buyers",
-            "subheadline": f"A high-end, conversion-focused landing page for {subject}, with polished visuals, strong product storytelling and a premium brand feel.",
-            "primaryCta": "Explore Collection",
-            "secondaryCta": "View Details",
+            "eyebrow": eyebrow,
+            "headline": headline,
+            "subheadline": subheadline,
+            "primaryCta": cta1,
+            "secondaryCta": cta2,
         },
         "sections": [
-            {
-                "title": "Signature Experience",
-                "description": f"A carefully crafted presentation for {subject}, focused on trust, clarity and premium perception.",
-                "items": ["Premium positioning", "Clear visual hierarchy", "Conversion-first layout"],
-            },
-            {
-                "title": "Built To Convert",
-                "description": "Every section guides visitors from first impression to action with strong messaging and elegant UI.",
-                "items": ["Hero CTA", "Product highlights", "Trust signals"],
-            },
-            {
-                "title": "Launch Ready Structure",
-                "description": "Responsive sections, polished styling and a complete homepage flow ready for refinement.",
-                "items": ["Responsive design", "Modern cards", "Premium footer"],
-            },
+            {"title": sec_titles[0], "description": sec_desc, "items": ["Премиум позициониране" if bg else "Premium positioning", "Ясна йерархия" if bg else "Clear visual hierarchy", "Конверсия" if bg else "Conversion-first"]},
+            {"title": sec_titles[1], "description": "Всяка секция води към действие." if bg else "Every section guides visitors to action.", "items": ["Hero CTA", "Продуктови акценти" if bg else "Product highlights", "Доверие" if bg else "Trust signals"]},
+            {"title": sec_titles[2], "description": "Респонсив дизайн за всички устройства." if bg else "Responsive design for any device.", "items": ["Респонсив" if bg else "Responsive", "Модерни карти" if bg else "Modern cards", "Премиум футър" if bg else "Premium footer"]},
         ],
-        "features": [
-            {"title": "Premium Design", "description": "Luxury spacing, cinematic contrast and high-end visual rhythm."},
-            {"title": "Fast Experience", "description": "Clean HTML and CSS designed to render quickly in the preview."},
-            {"title": "Brand Focused", "description": f"Copy and sections stay focused on {subject} without drifting."},
-        ],
+        "features": feat,
         "pricing": [],
-        "footer": {
-            "headline": f"Ready to build your {subject} experience?",
-            "cta": "Start Now",
+        "footer": {"headline": footer_headline, "cta": footer_cta},
+    }
+
+
+def _post_clean(state: dict, subject: str) -> dict:
+    bad_patterns = [
+        r"built for modern buyers", r"ready to build your",
+        r"a high-end,?\s*conversion-focused landing page for",
+        r"with polished visuals", r"strong product storytelling",
+        r"premium brand feel", r"site pages", r"page_path",
+        r"user request", r"mode:", r"с видео фон", r"видео фон",
+        r"с реални снимки", r"реални снимки",
+    ]
+    def clean(value, max_words=None):
+        if not isinstance(value, str):
+            return value
+        s = value
+        for pat in bad_patterns:
+            s = re.sub(pat, "", s, flags=re.I).strip(" ,-.")
+        s = re.sub(r"\s+", " ", s).strip()
+        if max_words and len(s.split()) > max_words:
+            s = " ".join(s.split()[:max_words]).strip(" ,-.")
+        return s or subject
+    hero = state.get("hero", {})
+    if isinstance(hero, dict):
+        hero["headline"] = clean(hero.get("headline", ""), max_words=6)
+        hero["subheadline"] = clean(hero.get("subheadline", ""), max_words=20)
+        hero["eyebrow"] = clean(hero.get("eyebrow", ""), max_words=4)
+        state["hero"] = hero
+    footer = state.get("footer", {})
+    if isinstance(footer, dict):
+        footer["headline"] = clean(footer.get("headline", ""), max_words=8)
+        state["footer"] = footer
+    state["brandName"] = clean(state.get("brandName", subject), max_words=3)
+    state["tagline"] = clean(state.get("tagline", ""), max_words=12)
+    state["industry"] = clean(state.get("industry", subject), max_words=3)
+    return state
+
+
+def _enforce_universal_generation_field(state, prompt: str, subject_contract: dict, legacy_subject: str):
+    """
+    Enforce universalSubject + generation after AI response.
+
+    Important:
+    - latestPrompt/subjectContract are the source of truth
+    - legacy_subject is emergency fallback only
+    - no category lists
+    - no topic hardcoding
+    """
+    if not isinstance(state, dict):
+        state = {}
+
+    universal = state.get("universalSubject") if isinstance(state.get("universalSubject"), dict) else {}
+    generation = state.get("generation") if isinstance(state.get("generation"), dict) else {}
+    media = state.get("media") if isinstance(state.get("media"), dict) else {}
+
+    subject = (
+        str(generation.get("subject") or "").strip()
+        or str(universal.get("subject") or "").strip()
+        or str(state.get("subject") or "").strip()
+        or str(legacy_subject or "").strip()
+    )
+
+    media_subject = (
+        str(generation.get("mediaSubject") or "").strip()
+        or str(media.get("subject") or "").strip()
+        or subject
+    )
+
+    generation = {
+        "sourceOfTruth": "latest_prompt",
+        "mustFollowLatestPrompt": True,
+        "subject": subject,
+        "mainSubject": str(generation.get("mainSubject") or subject).strip(),
+        "brandName": str(generation.get("brandName") or subject).strip(),
+        "headlineSubject": str(generation.get("headlineSubject") or subject).strip(),
+        "mediaSubject": media_subject,
+        "confidence": generation.get("confidence") or universal.get("confidence") or 0.9,
+    }
+
+    queries = media.get("queries") if isinstance(media.get("queries"), list) else []
+    queries = [str(q).strip() for q in queries if str(q).strip()]
+    if media_subject and media_subject.lower() not in [q.lower() for q in queries]:
+        queries.insert(0, media_subject)
+
+    negative_hints = media.get("negativeHints") if isinstance(media.get("negativeHints"), list) else []
+    negative_hints = [str(h).strip() for h in negative_hints if str(h).strip()]
+
+    media = {
+        **media,
+        "subject": media_subject,
+        "queries": queries[:8],
+        "negativeHints": negative_hints[:8],
+    }
+
+    state["universalSubject"] = {
+        "subject": subject,
+        "clean_prompt": str(universal.get("clean_prompt") or prompt).strip(),
+        "source": "latest_prompt",
+        "confidence": generation["confidence"],
+        "reason": str(universal.get("reason") or "Enforced from universal subject contract.").strip(),
+        "generation": generation,
+        "media": media,
+        "rules": list(subject_contract.get("rules") or []),
+    }
+
+    state["generation"] = generation
+    state["media"] = media
+
+    if subject:
+        state["subject"] = subject
+        state["mainSubject"] = generation["mainSubject"]
+        state["brandName"] = generation["brandName"]
+
+    visual = state.get("visualSystem") if isinstance(state.get("visualSystem"), dict) else {}
+    if media_subject:
+        visual["backgroundPrompt"] = str(visual.get("backgroundPrompt") or media_subject).strip()
+    state["visualSystem"] = visual
+
+    return state
+
+
+def _build_subject_generation_from_prompt(prompt: str, current_state=None):
+    """
+    Universal subject pre-step.
+
+    This is the bridge between universal_subject.py contract and the main generator.
+    No category hardcoding. Latest prompt is source of truth.
+    """
+    api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+
+    contract = dict(UNIVERSAL_SUBJECT_AGENT_CONTRACT)
+    contract["latestPrompt"] = prompt
+    contract["previousState"] = current_state or {}
+
+    fallback_subject = _extract_subject(prompt)
+
+    fallback = {
+        "subject": fallback_subject,
+        "clean_prompt": prompt,
+        "confidence": 0.35,
+        "reason": "Fallback only because subject pre-step did not return usable JSON.",
+        "generation": {
+            "sourceOfTruth": "latest_prompt",
+            "mustFollowLatestPrompt": True,
+            "subject": fallback_subject,
+            "mainSubject": fallback_subject,
+            "brandName": fallback_subject,
+            "headlineSubject": fallback_subject,
+            "mediaSubject": fallback_subject,
+            "confidence": 0.35,
+        },
+        "media": {
+            "subject": fallback_subject,
+            "queries": [fallback_subject] if fallback_subject else [prompt],
+            "negativeHints": [],
         },
     }
+
+    if not api_key:
+        return fallback
+
+    system = """You are Galio IA Studio's universal subject extractor.
+Return ONLY valid JSON.
+No markdown.
+No explanations.
+Use the latestPrompt as the only source of truth.
+Previous state is context only.
+Do not use fixed categories.
+Do not use examples.
+Fill generation and media fields exactly from the requested subject."""
+
+    try:
+        r = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": json.dumps(contract, ensure_ascii=False)},
+                ],
+                "temperature": 0.15,
+                "max_tokens": 1200,
+            },
+            timeout=45,
+        )
+        if r.status_code >= 400:
+            return fallback
+
+        content = r.json()["choices"][0]["message"]["content"].strip()
+        content = re.sub(r"^```(?:json)?", "", content).strip()
+        content = re.sub(r"```$", "", content).strip()
+        data = json.loads(content)
+        data = _apply_subject_generation(data, subject_data)
+
+        if not isinstance(data, dict):
+            return fallback
+
+        generation = data.get("generation") if isinstance(data.get("generation"), dict) else {}
+        media = data.get("media") if isinstance(data.get("media"), dict) else {}
+
+        subject = str(generation.get("subject") or data.get("subject") or "").strip()
+        if not subject:
+            return fallback
+
+        generation = {
+            "sourceOfTruth": "latest_prompt",
+            "mustFollowLatestPrompt": True,
+            "subject": subject,
+            "mainSubject": str(generation.get("mainSubject") or subject).strip(),
+            "brandName": str(generation.get("brandName") or subject).strip(),
+            "headlineSubject": str(generation.get("headlineSubject") or subject).strip(),
+            "mediaSubject": str(generation.get("mediaSubject") or subject).strip(),
+            "confidence": generation.get("confidence") or data.get("confidence") or 0.9,
+        }
+
+        queries = media.get("queries") if isinstance(media.get("queries"), list) else []
+        queries = [str(q).strip() for q in queries if str(q).strip()]
+        if generation["mediaSubject"].lower() not in [q.lower() for q in queries]:
+            queries.insert(0, generation["mediaSubject"])
+
+        data["subject"] = subject
+        data["generation"] = generation
+        data["media"] = {
+            "subject": generation["mediaSubject"],
+            "queries": queries[:8],
+            "negativeHints": media.get("negativeHints") if isinstance(media.get("negativeHints"), list) else [],
+        }
+        return data
+    except Exception:
+        return fallback
+
+
+def _apply_subject_generation(state, subject_data):
+    if not isinstance(state, dict):
+        state = {}
+
+    generation = subject_data.get("generation") if isinstance(subject_data.get("generation"), dict) else {}
+    media = subject_data.get("media") if isinstance(subject_data.get("media"), dict) else {}
+
+    subject = str(generation.get("subject") or subject_data.get("subject") or "").strip()
+    if not subject:
+        return state
+
+    state["universalSubject"] = subject_data
+    state["generation"] = generation
+    state["subject"] = subject
+    state["mainSubject"] = generation.get("mainSubject") or subject
+    state["brandName"] = generation.get("brandName") or subject
+
+    existing_media = state.get("media") if isinstance(state.get("media"), dict) else {}
+    existing_media.update(media)
+    state["media"] = existing_media
+
+    visual = state.get("visualSystem") if isinstance(state.get("visualSystem"), dict) else {}
+    visual["backgroundPrompt"] = generation.get("mediaSubject") or subject
+    state["visualSystem"] = visual
+
+    return state
 
 
 def generate_project_state_with_groq(prompt: str, current_state=None):
     api_key = os.environ.get("GROQ_API_KEY", "").strip()
     model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
 
-    fallback = _default_state(prompt)
+    subject_data = _build_subject_generation_from_prompt(prompt, current_state)
+    subject = subject_data.get("generation", {}).get("subject") or subject_data.get("subject") or _extract_subject(prompt)
+    media_subject = subject_data.get("generation", {}).get("mediaSubject") or subject_data.get("media", {}).get("subject") or subject or prompt
 
+    fallback = _apply_subject_generation(_default_state(prompt), subject_data)
     if not api_key:
-        fallback["mediaAssets"] = fetch_pexels_media(prompt)
+        fallback["mediaAssets"] = fetch_pexels_media(media_subject)
         return fallback
 
-    system = """
-You are Galio AI Studio's universal website agent.
-Generate a structured WebsiteProjectState JSON object, not raw HTML.
+    bg = bool(re.search(r"[а-яА-Я]", prompt))
+    lang_instruction = (
+        "The user wrote in Bulgarian. Output ALL website copy in Bulgarian (Cyrillic)."
+        if bg else
+        "The user wrote in English. Output all website copy in English."
+    )
+    subject_contract = dict(UNIVERSAL_SUBJECT_AGENT_CONTRACT)
+    subject_contract["latestPrompt"] = prompt
+    subject_contract["previousState"] = current_state or {}
+    subject_contract["extractedSubject"] = subject_data
+
+    system = f"""You are Galio AI Studio's universal website content agent.
+
+CRITICAL UNIVERSAL SUBJECT CONTRACT:
+- The latest user prompt is the ONLY source of truth.
+- The previous/current project state is context only, never authority.
+- Do NOT keep an old subject when the latest prompt asks for a new one.
+- Do NOT use fixed categories or examples.
+- Use the provided subjectContract to extract the main subject.
+- projectState MUST include universalSubject.
+- projectState MUST include generation.
+- projectState.generation.subject MUST control brandName, headline, sections, cards, generated files and media queries.
+- mediaAssets and media queries MUST follow projectState.generation.mediaSubject.
+Generate a structured WebsiteProjectState JSON from subjectContract.latestPrompt. The extracted generation.subject is the website authority.
+
+{lang_instruction}
 
 Return ONLY valid JSON. No markdown. No explanations.
 
 Schema:
-{
+{{
+  "universalSubject": {{
+    "subject": string,
+    "clean_prompt": string,
+    "source": "latest_prompt",
+    "confidence": number,
+    "reason": string
+  }},
+  "generation": {{
+    "sourceOfTruth": "latest_prompt",
+    "mustFollowLatestPrompt": true,
+    "subject": string,
+    "mainSubject": string,
+    "brandName": string,
+    "headlineSubject": string,
+    "mediaSubject": string,
+    "confidence": number
+  }},
+  "media": {{
+    "subject": string,
+    "queries": [string],
+    "negativeHints": [string]
+  }},
   "brandName": string,
   "tagline": string,
   "industry": string,
   "style": string,
   "primaryColor": string,
   "secondaryColor": string,
-  "visualSystem": {
-    "backgroundType": "gradient" | "animated" | "video" | "image",
-    "backgroundPrompt": string,
-    "motion": string,
-    "details": string[]
-  },
-  "hero": {
-    "eyebrow": string,
-    "headline": string,
-    "subheadline": string,
-    "primaryCta": string,
-    "secondaryCta": string
-  },
-  "sections": [
-    {"title": string, "description": string, "items": string[]}
-  ],
-  "features": [
-    {"title": string, "description": string}
-  ],
-  "pricing": [
-    {"name": string, "price": string, "description": string, "features": string[]}
-  ],
-  "footer": {
-    "headline": string,
-    "cta": string
-  }
-}
+  "visualSystem": {{"backgroundType": string, "backgroundPrompt": string, "motion": string, "details": []}},
+  "hero": {{"eyebrow": string, "headline": string, "subheadline": string, "primaryCta": string, "secondaryCta": string}},
+  "sections": [{{"title": string, "description": string, "items": []}}],
+  "features": [{{"title": string, "description": string}}],
+  "pricing": [],
+  "footer": {{"headline": string, "cta": string}}
+}}
 
-Rules:
-- Stay strictly on the user's requested subject.
-- Make it premium agency-quality.
-- Prefer dark cinematic style unless user requests light.
-- For luxury/tech products use strong product/feature sections.
-- If user writes Bulgarian, output Bulgarian website copy.
-- If user writes English, output English website copy.
-- Do not include debug text, placeholders, Pexels notes, or implementation notes.
+CRITICAL RULES:
+- hero.headline = 2-5 words MAX. Just the product/brand name. NEVER "Built For Modern Buyers", NEVER prompt text.
+- footer.headline = max 8 words. Short CTA only.
+- brandName = max 3 words, NO style modifiers.
+- Stay on topic: projectState.generation.subject from the universal subject contract
+- Dark cinematic style unless user requests light.
 """
-
-    user = {
-        "prompt": prompt,
-        "currentState": current_state or {},
-    }
-
     try:
         r = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": model,
                 "messages": [
                     {"role": "system", "content": system},
-                    {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
+                    {"role": "user", "content": json.dumps({
+                        "subjectContract": subject_contract,
+                        "latestPrompt": prompt,
+                        "currentState": current_state or {},
+                        "legacyFallbackSubject": subject,
+                    }, ensure_ascii=False)},
                 ],
-                "temperature": 0.72,
+                "temperature": 0.65,
                 "max_tokens": 5000,
             },
             timeout=90,
         )
         if r.status_code >= 400:
+            fallback["mediaAssets"] = fetch_pexels_media(prompt)
             return fallback
-
         content = r.json()["choices"][0]["message"]["content"].strip()
         content = re.sub(r"^```(?:json)?", "", content).strip()
         content = re.sub(r"```$", "", content).strip()
@@ -190,11 +525,16 @@ Rules:
         if start >= 0 and end > start:
             content = content[start:end + 1]
         data = json.loads(content)
-        if not isinstance(data, dict):
-            return fallback
 
+        data = _enforce_universal_generation_field(data, prompt, subject_contract, subject)
+        if not isinstance(data, dict):
+            fallback["mediaAssets"] = fetch_pexels_media(prompt)
+            return fallback
         merged = {**fallback, **data}
-        merged["mediaAssets"] = fetch_pexels_media(prompt)
+        if isinstance(data.get("hero"), dict):
+            merged["hero"] = {**fallback["hero"], **data["hero"]}
+        merged = _post_clean(merged, subject)
+        merged["mediaAssets"] = fetch_pexels_media((state.get("generation", {}) if isinstance(state, dict) else {}).get("mediaSubject") or (state.get("media", {}) if isinstance(state, dict) else {}).get("subject") or prompt)
         return merged
     except Exception:
         fallback["mediaAssets"] = fetch_pexels_media(prompt)
@@ -207,547 +547,47 @@ def render_premium_website(state: dict):
     industry = _txt(state.get("industry"), "premium brand")
     primary = _txt(state.get("primaryColor"), "#F59E0B")
     secondary = _txt(state.get("secondaryColor"), "#07070a")
-
     hero = state.get("hero") if isinstance(state.get("hero"), dict) else {}
     sections = state.get("sections") if isinstance(state.get("sections"), list) else []
     features = state.get("features") if isinstance(state.get("features"), list) else []
     pricing = state.get("pricing") if isinstance(state.get("pricing"), list) else []
     footer = state.get("footer") if isinstance(state.get("footer"), dict) else {}
-
     eyebrow = _txt(hero.get("eyebrow"), industry)
-    headline = _txt(hero.get("headline"), f"Premium {brand}")
+    headline = _txt(hero.get("headline"), brand)
     subheadline = _txt(hero.get("subheadline"), tagline)
-    primary_cta = _txt(hero.get("primaryCta"), "Get Started")
-    secondary_cta = _txt(hero.get("secondaryCta"), "Explore")
+    primary_cta = _txt(hero.get("primaryCta"), "Explore")
+    secondary_cta = _txt(hero.get("secondaryCta"), "Learn More")
 
     def esc(x):
         return html.escape(_txt(x), quote=True)
 
     feature_cards = ""
-    for item in (features[:6] or [
-        {"title": "Premium Strategy", "description": "A polished structure built for trust and conversion."},
-        {"title": "Cinematic Visuals", "description": "Dark, modern, memorable presentation with strong hierarchy."},
-        {"title": "Responsive Flow", "description": "Sections that feel clean on desktop and mobile."},
-    ]):
-        feature_cards += f"""
-        <article class="g-feature-card">
-          <div class="g-feature-icon"></div>
-          <h3>{esc(item.get("title"))}</h3>
-          <p>{esc(item.get("description"))}</p>
-        </article>
-        """
+    for item in (features[:6] or [{"title": "Premium Design", "description": "Clean visuals."}, {"title": "Fast Experience", "description": "Optimized for speed."}, {"title": "Brand Focused", "description": f"Content for {industry}."}]):
+        feature_cards += f'<article class="g-feature-card"><div class="g-feature-icon"></div><h3>{esc(item.get("title"))}</h3><p>{esc(item.get("description"))}</p></article>'
 
     section_blocks = ""
     for idx, sec in enumerate(sections[:4]):
         items = _arr(sec.get("items"), [])
         chips = "".join(f"<span>{esc(x)}</span>" for x in items[:5])
-        section_blocks += f"""
-        <article class="g-section-card {'g-section-card-large' if idx == 0 else ''}">
-          <div class="g-section-number">0{idx + 1}</div>
-          <h3>{esc(sec.get("title"))}</h3>
-          <p>{esc(sec.get("description"))}</p>
-          <div class="g-chip-row">{chips}</div>
-        </article>
-        """
+        section_blocks += f'<article class="g-section-card {"g-section-card-large" if idx == 0 else ""}"><div class="g-section-number">0{idx + 1}</div><h3>{esc(sec.get("title"))}</h3><p>{esc(sec.get("description"))}</p><div class="g-chip-row">{chips}</div></article>'
 
     pricing_blocks = ""
     for plan in pricing[:3]:
         feats = "".join(f"<li>{esc(x)}</li>" for x in _arr(plan.get("features"), [])[:5])
-        pricing_blocks += f"""
-        <article class="g-price-card">
-          <p class="g-plan">{esc(plan.get("name"))}</p>
-          <h3>{esc(plan.get("price"))}</h3>
-          <p>{esc(plan.get("description"))}</p>
-          <ul>{feats}</ul>
-        </article>
-        """
+        pricing_blocks += f'<article class="g-price-card"><p class="g-plan">{esc(plan.get("name"))}</p><h3>{esc(plan.get("price"))}</h3><p>{esc(plan.get("description"))}</p><ul>{feats}</ul></article>'
+    pricing_html = f'<section class="g-pricing"><div class="g-section-head"><p>Offers</p><h2>Choose the right experience</h2></div><div class="g-pricing-grid">{pricing_blocks}</div></section>' if pricing_blocks else ""
 
-    pricing_html = f"""
-    <section class="g-pricing">
-      <div class="g-section-head">
-        <p>Offers</p>
-        <h2>Choose the right experience</h2>
-      </div>
-      <div class="g-pricing-grid">{pricing_blocks}</div>
-    </section>
-    """ if pricing_blocks else ""
-
-    html_out = f"""
-<div class="g-site">
-  <nav class="g-nav">
-    <div class="g-logo"><span></span>{esc(brand)}</div>
-    <div class="g-nav-links">
-      <a>Experience</a>
-      <a>Features</a>
-      <a>Work</a>
-      <a>Contact</a>
-    </div>
-    <button class="g-nav-button">{esc(primary_cta)}</button>
-  </nav>
-
-  <section class="g-hero">
-    <div class="g-hero-copy">
-      <div class="g-eyebrow">{esc(eyebrow)}</div>
-      <h1>{esc(headline)}</h1>
-      <p>{esc(subheadline)}</p>
-      <div class="g-actions">
-        <button>{esc(primary_cta)}</button>
-        <button class="g-secondary">{esc(secondary_cta)}</button>
-      </div>
-      <div class="g-stats">
-        <div><strong>Premium</strong><span>Visual system</span></div>
-        <div><strong>Fast</strong><span>Launch flow</span></div>
-        <div><strong>100%</strong><span>Responsive</span></div>
-      </div>
-    </div>
-    <div class="g-hero-visual">
-      <div class="g-phone">
-        <div class="g-phone-top"></div>
-        <div class="g-screen-card">
-          <span>{esc(industry)}</span>
-          <strong>{esc(brand)}</strong>
-          <p>{esc(tagline)}</p>
-        </div>
-        <div class="g-product-row">
-          <div></div><div></div><div></div>
-        </div>
-      </div>
-      <div class="g-orb g-orb-a"></div>
-      <div class="g-orb g-orb-b"></div>
-    </div>
-  </section>
-
-  <section class="g-features">
-    {feature_cards}
-  </section>
-
-  <section class="g-sections">
-    <div class="g-section-head">
-      <p>Experience Architecture</p>
-      <h2>Designed like a premium product launch</h2>
-    </div>
-    <div class="g-section-grid">{section_blocks}</div>
-  </section>
-
+    html_out = f"""<div class="g-site">
+  <nav class="g-nav"><div class="g-logo"><span></span>{esc(brand)}</div><div class="g-nav-links"><a>Experience</a><a>Features</a><a>Work</a><a>Contact</a></div><button class="g-nav-button">{esc(primary_cta)}</button></nav>
+  <section class="g-hero"><div class="g-hero-copy"><div class="g-eyebrow">{esc(eyebrow)}</div><h1>{esc(headline)}</h1><p>{esc(subheadline)}</p><div class="g-actions"><button>{esc(primary_cta)}</button><button class="g-secondary">{esc(secondary_cta)}</button></div><div class="g-stats"><div><strong>Premium</strong><span>Visual system</span></div><div><strong>Fast</strong><span>Launch flow</span></div><div><strong>100%</strong><span>Responsive</span></div></div></div><div class="g-hero-visual"><div class="g-phone"><div class="g-phone-top"></div><div class="g-screen-card"><span>{esc(industry)}</span><strong>{esc(brand)}</strong><p>{esc(tagline)}</p></div><div class="g-product-row"><div></div><div></div><div></div></div></div><div class="g-orb g-orb-a"></div><div class="g-orb g-orb-b"></div></div></section>
+  <section class="g-features">{feature_cards}</section>
+  <section class="g-sections"><div class="g-section-head"><p>Experience Architecture</p><h2>Designed like a premium product launch</h2></div><div class="g-section-grid">{section_blocks}</div></section>
   {pricing_html}
+  <section class="g-cta"><p>{esc(industry)}</p><h2>{esc(footer.get("headline") or f"Ready to launch {brand}?")}</h2><button>{esc(footer.get("cta") or primary_cta)}</button></section>
+  <footer class="g-footer"><span>{esc(brand)}</span><span>{esc(tagline)}</span></footer>
+</div>"""
 
-  <section class="g-cta">
-    <p>{esc(industry)}</p>
-    <h2>{esc(footer.get("headline") or f'Ready to launch {brand}?')}</h2>
-    <button>{esc(footer.get("cta") or primary_cta)}</button>
-  </section>
-
-  <footer class="g-footer">
-    <span>{esc(brand)}</span>
-    <span>{esc(tagline)}</span>
-  </footer>
-</div>
-"""
-
-    css_out = f"""
-:root {{
-  --g-primary: {primary};
-  --g-secondary: {secondary};
-  --g-bg: #06070b;
-  --g-bg2: #0d1018;
-  --g-text: #f8fafc;
-  --g-muted: rgba(248,250,252,.68);
-  --g-border: rgba(255,255,255,.12);
-  --g-card: rgba(255,255,255,.055);
-}}
-
-* {{ box-sizing: border-box; }}
-
-body {{
-  margin: 0;
-  background: var(--g-bg);
-}}
-
-.g-site {{
-  min-height: 100vh;
-  color: var(--g-text);
-  background:
-    radial-gradient(circle at 18% 10%, color-mix(in srgb, var(--g-primary) 28%, transparent), transparent 32%),
-    radial-gradient(circle at 85% 15%, rgba(96,165,250,.18), transparent 30%),
-    linear-gradient(135deg, #050509 0%, #0b0f18 52%, #050509 100%);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  overflow: hidden;
-}}
-
-.g-nav {{
-  width: min(1180px, calc(100% - 32px));
-  margin: 0 auto;
-  padding: 22px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}}
-
-.g-logo {{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 900;
-  letter-spacing: -.04em;
-}}
-
-.g-logo span {{
-  width: 18px;
-  height: 18px;
-  border-radius: 7px;
-  background: var(--g-primary);
-  box-shadow: 0 0 28px color-mix(in srgb, var(--g-primary) 65%, transparent);
-}}
-
-.g-nav-links {{
-  display: flex;
-  gap: 24px;
-  color: var(--g-muted);
-  font-size: 14px;
-}}
-
-.g-nav-button,
-.g-actions button,
-.g-cta button {{
-  border: 0;
-  border-radius: 999px;
-  background: var(--g-primary);
-  color: #04110b;
-  padding: 13px 19px;
-  font-weight: 900;
-  box-shadow: 0 18px 55px color-mix(in srgb, var(--g-primary) 28%, transparent);
-}}
-
-.g-hero {{
-  width: min(1180px, calc(100% - 32px));
-  margin: 0 auto;
-  min-height: 720px;
-  display: grid;
-  grid-template-columns: 1.05fr .95fr;
-  gap: 54px;
-  align-items: center;
-  padding: 54px 0 78px;
-}}
-
-.g-eyebrow {{
-  width: fit-content;
-  border: 1px solid var(--g-border);
-  background: rgba(255,255,255,.06);
-  color: var(--g-primary);
-  border-radius: 999px;
-  padding: 9px 14px;
-  margin-bottom: 22px;
-  font-size: 13px;
-  font-weight: 800;
-}}
-
-.g-hero h1 {{
-  max-width: 760px;
-  margin: 0;
-  font-size: clamp(48px, 7.6vw, 104px);
-  line-height: .88;
-  letter-spacing: -.085em;
-}}
-
-.g-hero p {{
-  max-width: 680px;
-  color: var(--g-muted);
-  font-size: 19px;
-  line-height: 1.72;
-  margin: 26px 0 0;
-}}
-
-.g-actions {{
-  display: flex;
-  gap: 14px;
-  margin-top: 32px;
-}}
-
-.g-actions .g-secondary {{
-  color: var(--g-text);
-  background: rgba(255,255,255,.075);
-  border: 1px solid var(--g-border);
-  box-shadow: none;
-}}
-
-.g-stats {{
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 42px;
-  max-width: 620px;
-}}
-
-.g-stats div {{
-  border: 1px solid var(--g-border);
-  background: rgba(255,255,255,.045);
-  border-radius: 22px;
-  padding: 18px;
-}}
-
-.g-stats strong {{
-  display: block;
-  font-size: 22px;
-}}
-
-.g-stats span {{
-  display: block;
-  color: var(--g-muted);
-  font-size: 13px;
-  margin-top: 4px;
-}}
-
-.g-hero-visual {{
-  position: relative;
-  min-height: 580px;
-  display: grid;
-  place-items: center;
-}}
-
-.g-phone {{
-  position: relative;
-  z-index: 2;
-  width: min(390px, 88vw);
-  min-height: 530px;
-  border-radius: 46px;
-  border: 1px solid rgba(255,255,255,.2);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.035)),
-    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--g-primary) 26%, transparent), transparent 42%);
-  box-shadow: 0 42px 120px rgba(0,0,0,.55);
-  padding: 22px;
-  backdrop-filter: blur(22px);
-}}
-
-.g-phone-top {{
-  width: 92px;
-  height: 8px;
-  border-radius: 999px;
-  margin: 0 auto 52px;
-  background: rgba(255,255,255,.22);
-}}
-
-.g-screen-card {{
-  border-radius: 32px;
-  border: 1px solid var(--g-border);
-  background: rgba(0,0,0,.34);
-  padding: 26px;
-}}
-
-.g-screen-card span {{
-  color: var(--g-primary);
-  font-size: 12px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: .12em;
-}}
-
-.g-screen-card strong {{
-  display: block;
-  font-size: 38px;
-  letter-spacing: -.06em;
-  line-height: .95;
-  margin-top: 18px;
-}}
-
-.g-screen-card p {{
-  font-size: 14px;
-  margin-top: 18px;
-}}
-
-.g-product-row {{
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 18px;
-}}
-
-.g-product-row div {{
-  height: 118px;
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--g-primary) 28%, transparent), rgba(255,255,255,.06)),
-    rgba(255,255,255,.06);
-  border: 1px solid var(--g-border);
-}}
-
-.g-orb {{
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(8px);
-}}
-
-.g-orb-a {{
-  width: 230px;
-  height: 230px;
-  right: 14px;
-  top: 48px;
-  background: color-mix(in srgb, var(--g-primary) 24%, transparent);
-}}
-
-.g-orb-b {{
-  width: 160px;
-  height: 160px;
-  left: 22px;
-  bottom: 70px;
-  background: rgba(96,165,250,.2);
-}}
-
-.g-features,
-.g-pricing-grid {{
-  width: min(1180px, calc(100% - 32px));
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  padding: 24px 0 80px;
-}}
-
-.g-feature-card,
-.g-section-card,
-.g-price-card {{
-  border: 1px solid var(--g-border);
-  background: var(--g-card);
-  border-radius: 30px;
-  padding: 28px;
-  box-shadow: 0 24px 80px rgba(0,0,0,.18);
-}}
-
-.g-feature-icon {{
-  width: 42px;
-  height: 42px;
-  border-radius: 16px;
-  background: var(--g-primary);
-  box-shadow: 0 0 38px color-mix(in srgb, var(--g-primary) 45%, transparent);
-  margin-bottom: 20px;
-}}
-
-.g-feature-card h3,
-.g-section-card h3,
-.g-price-card h3 {{
-  margin: 0;
-  font-size: 24px;
-  letter-spacing: -.04em;
-}}
-
-.g-feature-card p,
-.g-section-card p,
-.g-price-card p,
-.g-price-card li {{
-  color: var(--g-muted);
-  line-height: 1.65;
-}}
-
-.g-sections,
-.g-pricing {{
-  width: min(1180px, calc(100% - 32px));
-  margin: 0 auto;
-  padding: 24px 0 80px;
-}}
-
-.g-section-head {{
-  margin-bottom: 24px;
-}}
-
-.g-section-head p {{
-  color: var(--g-primary);
-  text-transform: uppercase;
-  letter-spacing: .12em;
-  font-size: 13px;
-  font-weight: 900;
-}}
-
-.g-section-head h2,
-.g-cta h2 {{
-  max-width: 790px;
-  margin: 0;
-  font-size: clamp(34px, 5vw, 68px);
-  line-height: .95;
-  letter-spacing: -.07em;
-}}
-
-.g-section-grid {{
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}}
-
-.g-section-card-large {{
-  grid-row: span 2;
-}}
-
-.g-section-number {{
-  color: var(--g-primary);
-  font-weight: 900;
-  margin-bottom: 28px;
-}}
-
-.g-chip-row {{
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 22px;
-}}
-
-.g-chip-row span {{
-  border: 1px solid var(--g-border);
-  border-radius: 999px;
-  padding: 8px 11px;
-  color: rgba(255,255,255,.78);
-  background: rgba(255,255,255,.045);
-  font-size: 13px;
-}}
-
-.g-plan {{
-  color: var(--g-primary) !important;
-  font-weight: 900;
-}}
-
-.g-price-card ul {{
-  padding-left: 18px;
-}}
-
-.g-cta {{
-  width: min(1180px, calc(100% - 32px));
-  margin: 0 auto 40px;
-  border: 1px solid var(--g-border);
-  border-radius: 38px;
-  padding: 56px;
-  background:
-    radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--g-primary) 22%, transparent), transparent 38%),
-    rgba(255,255,255,.055);
-}}
-
-.g-cta p {{
-  color: var(--g-primary);
-  font-weight: 900;
-}}
-
-.g-cta button {{
-  margin-top: 26px;
-}}
-
-.g-footer {{
-  width: min(1180px, calc(100% - 32px));
-  margin: 0 auto;
-  padding: 32px 0 48px;
-  display: flex;
-  justify-content: space-between;
-  color: var(--g-muted);
-  border-top: 1px solid var(--g-border);
-}}
-
-@media (max-width: 900px) {{
-  .g-nav-links {{ display: none; }}
-  .g-hero {{ grid-template-columns: 1fr; min-height: auto; }}
-  .g-features,
-  .g-pricing-grid,
-  .g-section-grid,
-  .g-stats {{ grid-template-columns: 1fr; }}
-  .g-hero h1 {{ font-size: 52px; }}
-  .g-cta {{ padding: 32px; }}
-}}
-"""
+    css_out = f""":root{{--g-primary:{primary};--g-secondary:{secondary};--g-bg:#06070b;--g-text:#f8fafc;--g-muted:rgba(248,250,252,.68);--g-border:rgba(255,255,255,.12);--g-card:rgba(255,255,255,.055)}}*{{box-sizing:border-box}}body{{margin:0;background:var(--g-bg)}}.g-site{{min-height:100vh;color:var(--g-text);background:radial-gradient(circle at 18% 10%,color-mix(in srgb,var(--g-primary) 28%,transparent),transparent 32%),radial-gradient(circle at 85% 15%,rgba(96,165,250,.18),transparent 30%),linear-gradient(135deg,#050509 0%,#0b0f18 52%,#050509 100%);font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden}}.g-nav{{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:22px 0;display:flex;align-items:center;justify-content:space-between}}.g-logo{{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:-.04em}}.g-logo span{{width:18px;height:18px;border-radius:7px;background:var(--g-primary);box-shadow:0 0 28px color-mix(in srgb,var(--g-primary) 65%,transparent)}}.g-nav-links{{display:flex;gap:24px;color:var(--g-muted);font-size:14px}}.g-nav-button,.g-actions button,.g-cta button{{border:0;border-radius:999px;background:var(--g-primary);color:#04110b;padding:13px 19px;font-weight:900;cursor:pointer}}.g-hero{{width:min(1180px,calc(100% - 32px));margin:0 auto;min-height:720px;display:grid;grid-template-columns:1.05fr .95fr;gap:54px;align-items:center;padding:54px 0 78px}}.g-eyebrow{{width:fit-content;border:1px solid var(--g-border);background:rgba(255,255,255,.06);color:var(--g-primary);border-radius:999px;padding:9px 14px;margin-bottom:22px;font-size:13px;font-weight:800}}.g-hero h1{{max-width:760px;margin:0;font-size:clamp(48px,7.6vw,104px);line-height:.88;letter-spacing:-.085em}}.g-hero p{{max-width:680px;color:var(--g-muted);font-size:19px;line-height:1.72;margin:26px 0 0}}.g-actions{{display:flex;gap:14px;margin-top:32px}}.g-actions .g-secondary{{color:var(--g-text);background:rgba(255,255,255,.075);border:1px solid var(--g-border);box-shadow:none}}.g-stats{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:42px;max-width:620px}}.g-stats div{{border:1px solid var(--g-border);background:rgba(255,255,255,.045);border-radius:22px;padding:18px}}.g-stats strong{{display:block;font-size:22px}}.g-stats span{{display:block;color:var(--g-muted);font-size:13px;margin-top:4px}}.g-hero-visual{{position:relative;min-height:580px;display:grid;place-items:center}}.g-phone{{position:relative;z-index:2;width:min(390px,88vw);min-height:530px;border-radius:46px;border:1px solid rgba(255,255,255,.2);background:linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.035)),radial-gradient(circle at 50% 0%,color-mix(in srgb,var(--g-primary) 26%,transparent),transparent 42%);box-shadow:0 42px 120px rgba(0,0,0,.55);padding:22px;backdrop-filter:blur(22px)}}.g-phone-top{{width:92px;height:8px;border-radius:999px;margin:0 auto 52px;background:rgba(255,255,255,.22)}}.g-screen-card{{border-radius:32px;border:1px solid var(--g-border);background:rgba(0,0,0,.34);padding:26px}}.g-screen-card span{{color:var(--g-primary);font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.12em}}.g-screen-card strong{{display:block;font-size:38px;letter-spacing:-.06em;line-height:.95;margin-top:18px}}.g-screen-card p{{font-size:14px;margin-top:18px}}.g-product-row{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}}.g-product-row div{{height:118px;border-radius:24px;background:linear-gradient(180deg,color-mix(in srgb,var(--g-primary) 28%,transparent),rgba(255,255,255,.06)),rgba(255,255,255,.06);border:1px solid var(--g-border)}}.g-orb{{position:absolute;border-radius:999px;filter:blur(8px)}}.g-orb-a{{width:230px;height:230px;right:14px;top:48px;background:color-mix(in srgb,var(--g-primary) 24%,transparent)}}.g-orb-b{{width:160px;height:160px;left:22px;bottom:70px;background:rgba(96,165,250,.2)}}.g-features,.g-pricing-grid{{width:min(1180px,calc(100% - 32px));margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:24px 0 80px}}.g-feature-card,.g-section-card,.g-price-card{{border:1px solid var(--g-border);background:var(--g-card);border-radius:30px;padding:28px;box-shadow:0 24px 80px rgba(0,0,0,.18)}}.g-feature-icon{{width:42px;height:42px;border-radius:16px;background:var(--g-primary);box-shadow:0 0 38px color-mix(in srgb,var(--g-primary) 45%,transparent);margin-bottom:20px}}.g-feature-card h3,.g-section-card h3,.g-price-card h3{{margin:0;font-size:24px;letter-spacing:-.04em}}.g-feature-card p,.g-section-card p,.g-price-card p,.g-price-card li{{color:var(--g-muted);line-height:1.65}}.g-sections,.g-pricing{{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:24px 0 80px}}.g-section-head{{margin-bottom:24px}}.g-section-head p{{color:var(--g-primary);text-transform:uppercase;letter-spacing:.12em;font-size:13px;font-weight:900}}.g-section-head h2,.g-cta h2{{max-width:790px;margin:0;font-size:clamp(34px,5vw,68px);line-height:.95;letter-spacing:-.07em}}.g-section-grid{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}}.g-section-card-large{{grid-row:span 2}}.g-section-number{{color:var(--g-primary);font-weight:900;margin-bottom:28px}}.g-chip-row{{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}}.g-chip-row span{{border:1px solid var(--g-border);border-radius:999px;padding:8px 11px;color:rgba(255,255,255,.78);background:rgba(255,255,255,.045);font-size:13px}}.g-cta{{width:min(1180px,calc(100% - 32px));margin:0 auto 40px;border:1px solid var(--g-border);border-radius:38px;padding:56px;background:radial-gradient(circle at 80% 20%,color-mix(in srgb,var(--g-primary) 22%,transparent),transparent 38%),rgba(255,255,255,.055)}}.g-cta p{{color:var(--g-primary);font-weight:900}}.g-cta button{{margin-top:26px}}.g-footer{{width:min(1180px,calc(100% - 32px));margin:0 auto;padding:32px 0 48px;display:flex;justify-content:space-between;color:var(--g-muted);border-top:1px solid var(--g-border)}}@media(max-width:900px){{.g-nav-links{{display:none}}.g-hero{{grid-template-columns:1fr;min-height:auto}}.g-features,.g-pricing-grid,.g-section-grid,.g-stats{{grid-template-columns:1fr}}.g-hero h1{{font-size:52px}}.g-cta{{padding:32px}}}}"""
 
     return {
         "html": html_out,

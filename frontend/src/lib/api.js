@@ -29,6 +29,14 @@ export const deleteProject = (id) =>
 export const aiGenerate = (payload) =>
   api.post("/ai/generate", payload, { timeout: 180000 }).then((r) => r.data);
 
+export const searchPexelsMedia = ({ q, type = "photo", per_page = 18 }) =>
+  api
+    .get("/media/pexels/search", {
+      params: { q, type, per_page },
+      timeout: 45000,
+    })
+    .then((r) => r.data);
+
 // Messages & versions
 export const getMessages = (projectId) =>
   api.get(`/projects/${projectId}/messages`).then((r) => r.data);
