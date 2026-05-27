@@ -4,127 +4,133 @@ import {
   FileType,
   FileJson,
   Save,
+  Files,
   Copy,
   Check,
   Code2,
   MousePointer2,
   Eye,
-  Folder,
+  Search,
   FolderOpen,
   Braces,
-  Palette,
-  LayoutTemplate,
-  Database,
-  Settings,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import InspectorPanel from "@/components/studio/InspectorPanel";
 import ComponentsPalette from "@/components/studio/ComponentsPalette";
 
-const CORE_FILES = [
+const FALLBACK_FILES = [
   {
     id: "html",
-    field: "html",
-    path: "src/generated/index.html",
+    label: "index.html",
     name: "index.html",
-    folder: "src/generated",
+    path: "src/generated/index.html",
+    type: "HTML",
+    language: "html",
     icon: FileCode,
     editable: true,
+    contentField: "html",
   },
   {
     id: "css",
-    field: "css",
-    path: "src/generated/styles.css",
+    label: "styles.css",
     name: "styles.css",
-    folder: "src/generated",
+    path: "src/generated/styles.css",
+    type: "CSS",
+    language: "css",
     icon: FileType,
     editable: true,
+    contentField: "css",
   },
   {
     id: "js",
-    field: "js",
-    path: "src/generated/script.js",
+    label: "script.js",
     name: "script.js",
-    folder: "src/generated",
+    path: "src/generated/script.js",
+    type: "JS",
+    language: "javascript",
     icon: FileJson,
     editable: true,
+    contentField: "js",
+  },
+  {
+    id: "projectState",
+    label: "projectState.json",
+    name: "projectState.json",
+    path: "src/generated/projectState.json",
+    type: "JSON",
+    language: "json",
+    icon: Braces,
+    editable: false,
   },
 ];
 
-function stringify(value) {
-  try {
-    return JSON.stringify(value || {}, null, 2);
-  } catch {
-    return "{}";
-  }
+function fileIcon(language) {
+  const lang = String(language || "").toLowerCase();
+  if (lang === "html") return FileCode;
+  if (lang === "css") return FileType;
+  if (lang === "javascript" || lang === "js") return FileJson;
+  return Braces;
 }
 
-function buildFiles(activePage, project) {
-  const state = activePage?.projectState || project?.projectState || {};
-  const media = state?.mediaAssets || {};
-  const custom = state?.customCode || {};
+function normalizeGeneratedFiles(activePage) {
+  const generated = Array.isArray(activePage?.generatedFiles)
+    ? activePage.generatedFiles
+    : [];
 
-  return [
-    ...CORE_FILES,
-    {
-      id: "projectState",
-      path: "src/generated/projectState.json",
-      name: "projectState.json",
-      folder: "src/generated",
-      icon: Braces,
-      editable: false,
-      value: stringify(state),
-    },
-    {
-      id: "theme",
-      path: "src/generated/theme.json",
-      name: "theme.json",
-      folder: "src/generated",
-      icon: Palette,
-      editable: false,
-      value: stringify({
-        brandName: state.brandName,
-        industry: state.industry,
-        primaryColor: state.primaryColor,
-        secondaryColor: state.secondaryColor,
-        visualSystem: state.visualSystem,
-      }),
-    },
-    {
-      id: "media",
-      path: "src/generated/media.json",
-      name: "media.json",
-      folder: "src/generated",
-      icon: Database,
-      editable: false,
-      value: stringify(media),
-    },
-    {
-      id: "customCode",
-      path: "src/generated/customCode.json",
-      name: "customCode.json",
-      folder: "src/generated",
-      icon: Settings,
-      editable: false,
-      value: stringify(custom),
-    },
-    {
-      id: "renderer",
-      path: "src/components/studio/PremiumWebsiteRenderer.jsx",
-      name: "PremiumWebsiteRenderer.jsx",
-      folder: "src/components/studio",
-      icon: LayoutTemplate,
-      editable: false,
-      value:
-`// Renderer file reference
-// This is the React renderer that displays projectState.
-// Visual edits and AI generation update the project data,
-// then the renderer turns it into the live website.
+  if (generated.length) {
+    return generated.map((file, index) => {
+      const path = file.path || file.name || `generated/file-${index + 1}`;
+      const name = file.name || String(path).split("/").pop() || `file-${index + 1}`;
+      const language = file.language || file.kind || "text";
+      return {
+        id: file.id || path || name,
+        label: name,
+        name,
+        path,
+        type: String(language).toUpperCase(),
+        language,
+        editable: file.editable !== false,
+        content: typeof file.content === "string" ? file.content : "",
+        icon: fileIcon(language),
+      };
+    });
+  }
 
-// Real file:
-// frontend/src/components/studio/PremiumWebsiteRenderer.jsx`,
-    },
-  ];
+  return FALLBACK_FILES.map((file) => {
+    let content = "";
+    if (file.id === "projectState") {
+      content = JSON.stringify(activePage?.projectState || {}, null, 2);
+    } else {
+      content = activePage?.[file.contentField] || "";
+    }
+    return { ...file, content };
+  });
+}
+
+function getFileValue(file) {
+  return file?.content || "";
+}
+
+function groupedFiles(files) {
+  const groups = {};
+  for (const file of files) {
+    const parts = String(file.path || file.name || "").split("/");
+    const folder = parts.length > 1 ? parts.slice(0, -1).join("/") : "root";
+    if (!groups[folder]) groups[folder] = [];
+    groups[folder].push(file);
+  }
+
+  return Object.fromEntries(
+    Object.entries(groups)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([folder, folderFiles]) => [
+        folder,
+        [...folderFiles].sort((a, b) =>
+          String(a.path || a.name || "").localeCompare(String(b.path || b.name || ""))
+        ),
+      ])
+  );
 }
 
 export default function CodePanel({
@@ -145,25 +151,25 @@ export default function CodePanel({
   onLivePreview,
 }) {
   const [copied, setCopied] = React.useState(false);
-  const files = React.useMemo(() => buildFiles(activePage, project), [activePage, project]);
-  const selectedFile = files.find((f) => f.id === activeTab) || files[0];
-  const value = selectedFile?.editable
-    ? activePage?.[selectedFile.field] || ""
-    : selectedFile?.value || "";
+  const [query, setQuery] = React.useState("");
 
-  const grouped = React.useMemo(() => {
-    const out = [];
-    const folders = [...new Set(files.map((f) => f.folder))];
+  const files = React.useMemo(() => normalizeGeneratedFiles(activePage), [activePage]);
+  const selectedFile = files.find((file) => file.id === activeTab) || files[0];
+  const value = getFileValue(selectedFile);
+  const lineCount = value ? value.split("\n").length : 0;
+  const fileSize = new Blob([value || ""]).size;
 
-    for (const folder of folders) {
-      out.push({
-        folder,
-        files: files.filter((f) => f.folder === folder),
-      });
-    }
+  const visibleFiles = files.filter((file) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      file.label.toLowerCase().includes(q) ||
+      file.path.toLowerCase().includes(q) ||
+      file.type.toLowerCase().includes(q)
+    );
+  });
 
-    return out;
-  }, [files]);
+  const folders = groupedFiles(visibleFiles);
 
   const handleCopy = async () => {
     try {
@@ -176,98 +182,167 @@ export default function CodePanel({
     }
   };
 
-  const handleFileSelect = (file) => {
-    onTabChange(file.id);
-  };
-
-  const handleChange = (next) => {
+  const handleChange = (nextValue) => {
     if (!selectedFile?.editable) return;
-    onChange(selectedFile.field, next);
+
+    const id = selectedFile.id;
+    const path = selectedFile.path || "";
+
+    const field =
+      id === "html" || path.endsWith("index.html")
+        ? "html"
+        : id === "css" || path.endsWith("styles.css")
+          ? "css"
+          : id === "js" || path.endsWith("script.js")
+            ? "js"
+            : id;
+
+    onChange?.(field, nextValue, selectedFile);
   };
 
   return (
     <aside
-      className="border-l border-zinc-800/80 bg-zinc-950 flex flex-col min-h-0"
+      className="h-full min-h-0 border-l border-zinc-800/80 bg-[#07070a] text-white flex flex-col overflow-hidden"
       data-testid="code-panel"
     >
-      <div className="flex border-b border-zinc-800/60 shrink-0">
-        <button
-          data-testid="right-tab-code-btn"
-          onClick={() => onRightTabChange("code")}
-          className={`flex-1 h-9 text-xs font-medium flex items-center justify-center gap-1.5 border-b-2 transition-colors ${
-            rightTab === "code"
-              ? "border-white text-white"
-              : "border-transparent text-zinc-500 hover:text-zinc-200"
-          }`}
-        >
-          <Code2 className="w-3.5 h-3.5" /> Code
-        </button>
+      <div className="shrink-0 border-b border-zinc-800 bg-zinc-950/95 p-3">
+        <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-black/40 p-1 shadow-inner">
+          <button
+            type="button"
+            data-testid="right-tab-code-btn"
+            onClick={() => onRightTabChange?.("code")}
+            className={`flex-1 inline-flex h-8 items-center justify-center gap-1.5 rounded-xl text-xs font-semibold transition ${
+              rightTab === "code"
+                ? "bg-white text-zinc-950 shadow"
+                : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            }`}
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            Code
+          </button>
 
-        <button
-          data-testid="right-tab-inspect-btn"
-          onClick={() => onRightTabChange("inspect")}
-          className={`flex-1 h-9 text-xs font-medium flex items-center justify-center gap-1.5 border-b-2 transition-colors ${
-            rightTab === "inspect"
-              ? "border-white text-white"
-              : "border-transparent text-zinc-500 hover:text-zinc-200"
-          }`}
-        >
-          <MousePointer2 className="w-3.5 h-3.5" /> Inspect
-        </button>
+          <button
+            type="button"
+            data-testid="right-tab-inspect-btn"
+            onClick={() => onRightTabChange?.("inspect")}
+            className={`flex-1 inline-flex h-8 items-center justify-center gap-1.5 rounded-xl text-xs font-semibold transition ${
+              rightTab === "inspect"
+                ? "bg-white text-zinc-950 shadow"
+                : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            }`}
+          >
+            <MousePointer2 className="w-3.5 h-3.5" />
+            Inspect
+          </button>
 
-        <button
-          data-testid="right-tab-live-preview-btn"
-          onClick={onLivePreview}
-          className="flex-1 h-9 text-xs font-medium flex items-center justify-center gap-1.5 border-b-2 border-transparent text-zinc-500 hover:text-zinc-200 transition-colors"
-        >
-          <Eye className="w-3.5 h-3.5" /> Live Preview
-        </button>
+          <button
+            type="button"
+            data-testid="right-tab-live-preview-btn"
+            onClick={onLivePreview}
+            className="flex-1 inline-flex h-8 items-center justify-center gap-1.5 rounded-xl text-xs font-semibold text-zinc-400 transition hover:bg-zinc-900 hover:text-white"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Preview
+          </button>
+        </div>
       </div>
 
-      {rightTab === "code" ? (
-        <div className="flex-1 min-h-0 grid grid-rows-[260px_1fr]">
-          <section className="min-h-0 border-b border-zinc-800/70 bg-zinc-950/95">
-            <div className="h-9 px-3 border-b border-zinc-800/60 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-zinc-500">
-                <FolderOpen className="w-3.5 h-3.5" />
-                Generated File Tree
+      {rightTab === "inspect" ? (
+        <div className="flex-1 overflow-auto p-3">
+          <div className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="text-xs font-semibold text-white">Visual Inspector</div>
+            <div className="mt-1 text-[11px] leading-5 text-zinc-500">
+              Click an element in Edit mode and adjust it here.
+            </div>
+          </div>
+
+          <InspectorPanel
+            selected={selected}
+            editing={editing}
+            onUpdate={onInspectorUpdate}
+            onClose={onInspectorClose}
+            onEnter={onEnterEdit}
+          />
+
+          <div className="mt-3">
+            <ComponentsPalette onInsert={onInsertComponent} disabled={!editing} />
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 grid grid-rows-[240px_1fr]">
+          <section className="min-h-0 border-b border-zinc-800 bg-zinc-950/50 flex flex-col">
+            <div className="shrink-0 px-3 pt-3 pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.24em] text-zinc-500">
+                    <Files className="w-3.5 h-3.5" />
+                    Generated files
+                  </div>
+                  <div className="mt-1 text-[11px] text-zinc-600">
+                    Hercules-style flat tree • {files.length} files
+                  </div>
+                </div>
+
+                <div className="rounded-full border border-zinc-800 bg-black/40 px-2 py-1 text-[10px] font-mono text-zinc-500">
+                  {project?.name || "project"}
+                </div>
               </div>
-              <div className="text-[10px] font-mono text-zinc-600">
-                Hercules-style flat tree
+
+              <div className="mt-3 flex items-center gap-2 rounded-xl border border-zinc-800 bg-black/40 px-2.5 py-2">
+                <Search className="h-3.5 w-3.5 text-zinc-600" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search files..."
+                  className="w-full bg-transparent text-xs text-zinc-200 placeholder:text-zinc-600 outline-none"
+                />
               </div>
             </div>
 
-            <div className="h-[221px] overflow-auto p-2">
-              {grouped.map((group) => (
-                <div key={group.folder} className="mb-3">
-                  <div className="flex items-center gap-2 px-2 py-1 text-[11px] font-mono text-zinc-400">
-                    <Folder className="w-3.5 h-3.5 text-amber-300/80" />
-                    <span className="truncate">{group.folder}</span>
+            <div className="flex-1 overflow-auto px-3 pb-3">
+              {Object.entries(folders).map(([folder, folderFiles]) => (
+                <div key={folder} className="mb-3">
+                  <div className="mb-1.5 flex items-center gap-2 px-2 text-[10px] font-mono uppercase tracking-widest text-zinc-600">
+                    <FolderOpen className="h-3.5 w-3.5" />
+                    <span className="truncate">{folder}</span>
+                    <span className="ml-auto rounded-full border border-zinc-800 px-1.5 py-0.5 text-[9px] text-zinc-500">
+                      {folderFiles.length}
+                    </span>
                   </div>
 
-                  <div className="ml-4 space-y-0.5 border-l border-zinc-800/70 pl-2">
-                    {group.files.map((file) => {
-                      const Icon = file.icon || FileCode;
+                  <div className="space-y-1">
+                    {folderFiles.map((file) => {
+                      const Icon = file.icon || Braces;
                       const active = selectedFile?.id === file.id;
 
                       return (
                         <button
                           key={file.id}
-                          data-testid={`file-tree-${file.id}`}
-                          onClick={() => handleFileSelect(file)}
-                          className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-mono transition-all ${
+                          type="button"
+                          data-testid={`file-${file.id}-btn`}
+                          onClick={() => onTabChange?.(file.id)}
+                          className={`group w-full rounded-xl border px-2.5 py-2 text-left transition ${
                             active
-                              ? "bg-white text-zinc-950 shadow-lg"
-                              : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                              ? "border-white/20 bg-white text-zinc-950 shadow"
+                              : "border-zinc-800 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900 hover:text-white"
                           }`}
                         >
-                          <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-zinc-950" : "text-zinc-500"}`} />
-                          <span className="truncate">{file.name}</span>
-                          {!file.editable ? (
-                            <span className={`ml-auto text-[9px] uppercase ${active ? "text-zinc-600" : "text-zinc-600"}`}>
-                              read
-                            </span>
-                          ) : null}
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-xs font-semibold">
+                                {file.label}
+                              </div>
+                              <div
+                                className={`truncate text-[10px] font-mono ${
+                                  active ? "text-zinc-600" : "text-zinc-600 group-hover:text-zinc-500"
+                                }`}
+                              >
+                                {file.path}
+                              </div>
+                            </div>
+                            {!file.editable ? <Lock className="h-3 w-3 shrink-0 opacity-50" /> : null}
+                          </div>
                         </button>
                       );
                     })}
@@ -277,80 +352,75 @@ export default function CodePanel({
             </div>
           </section>
 
-          <section className="min-h-0 flex flex-col bg-[#050509]">
-            <div className="h-10 px-3 border-b border-zinc-800/70 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-zinc-100 truncate">
-                  {selectedFile?.path}
+          <section className="min-h-0 flex flex-col bg-[#050507]">
+            <div className="shrink-0 border-b border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {selectedFile?.icon ? (
+                      <selectedFile.icon className="h-3.5 w-3.5 text-zinc-400" />
+                    ) : (
+                      <FileCode className="h-3.5 w-3.5 text-zinc-400" />
+                    )}
+                    <span className="truncate text-xs font-semibold text-white">
+                      {selectedFile?.label || "No file"}
+                    </span>
+                    <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] font-mono text-zinc-500">
+                      {selectedFile?.type || "FILE"}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex min-w-0 items-center gap-2 text-[10px] font-mono text-zinc-600">
+                    <span className="truncate">{selectedFile?.path || ""}</span>
+                    <span className="shrink-0">•</span>
+                    <span className="shrink-0">{lineCount} lines</span>
+                    <span className="shrink-0">•</span>
+                    <span className="shrink-0">{fileSize} bytes</span>
+                    <span className="shrink-0">•</span>
+                    <span className={`shrink-0 ${selectedFile?.editable ? "text-emerald-400" : "text-amber-400"}`}>
+                      {selectedFile?.editable ? "editable" : "read-only"}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-[10px] font-mono text-zinc-600 truncate">
-                  {selectedFile?.editable ? "Editable generated source" : "Read-only project reference"}
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-[11px] font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+                  >
+                    {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="save-code-btn"
+                    onClick={onSave}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-white px-2.5 text-[11px] font-bold text-zinc-950 shadow transition hover:bg-zinc-200 active:scale-95"
+                  >
+                    <Save className="h-3 w-3" />
+                    Save
+                  </button>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  data-testid="copy-code-btn"
-                  onClick={handleCopy}
-                  className="h-7 px-2 rounded-lg border border-zinc-800 bg-zinc-900 text-[11px] text-zinc-300 hover:text-white hover:bg-zinc-800 inline-flex items-center gap-1"
-                >
-                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  {copied ? "Copied" : "Copy"}
-                </button>
-
-                <button
-                  data-testid="save-code-btn"
-                  onClick={onSave}
-                  disabled={!selectedFile?.editable}
-                  className={`h-7 px-3 rounded-lg text-[11px] inline-flex items-center gap-1 transition-all ${
-                    selectedFile?.editable
-                      ? "bg-white text-zinc-950 hover:bg-zinc-200 active:scale-95"
-                      : "bg-zinc-900 text-zinc-600 cursor-not-allowed"
-                  }`}
-                >
-                  <Save className="w-3 h-3" /> Save
-                </button>
               </div>
             </div>
 
             <textarea
               data-testid="code-editor"
               value={value}
-              readOnly={!selectedFile?.editable}
               onChange={(e) => handleChange(e.target.value)}
+              readOnly={!selectedFile?.editable}
               spellCheck={false}
-              className={`flex-1 min-h-0 w-full resize-none bg-[#050509] p-4 font-mono text-xs leading-6 outline-none ${
-                selectedFile?.editable
-                  ? "text-zinc-200 caret-emerald-300"
-                  : "text-zinc-400"
+              className={`flex-1 min-h-0 w-full resize-none border-0 bg-[#050507] p-4 font-mono text-xs leading-6 text-zinc-200 outline-none placeholder:text-zinc-700 ${
+                selectedFile?.editable ? "" : "opacity-70"
               }`}
+              placeholder={
+                selectedFile?.editable
+                  ? "Generated file content..."
+                  : "This generated metadata file is read-only for now."
+              }
             />
           </section>
-        </div>
-      ) : (
-        <div className="flex-1 min-h-0 overflow-auto">
-          <div className="p-3 border-b border-zinc-800/60">
-            <button
-              data-testid="enter-edit-mode-btn"
-              onClick={onEnterEdit}
-              className={`w-full h-9 rounded-lg text-xs font-semibold transition-all ${
-                editing
-                  ? "bg-blue-500/15 text-blue-200 border border-blue-400/30"
-                  : "bg-white text-zinc-950 hover:bg-zinc-200"
-              }`}
-            >
-              {editing ? "Edit mode enabled" : "Enable Edit mode"}
-            </button>
-          </div>
-
-          <InspectorPanel
-            selected={selected}
-            editing={editing}
-            onUpdate={onInspectorUpdate}
-            onClose={onInspectorClose}
-          />
-
-          <ComponentsPalette onInsert={onInsertComponent} />
         </div>
       )}
     </aside>
