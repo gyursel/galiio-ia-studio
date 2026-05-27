@@ -15,7 +15,25 @@ const PreviewCanvas = forwardRef(function PreviewCanvas(
 ) {
   const iframeRef = useRef(null);
   const size = DEVICE_SIZES[device] || DEVICE_SIZES.desktop;
-  const srcDoc = html ? injectEditorScript(html) : null;
+  const customCode = projectState?.renderMode === "customCode" && projectState?.customCode?.enabled ? projectState.customCode : null;
+  const rawHtml = customCode?.html ?? html ?? "";
+  const rawCss = customCode?.css ?? css ?? "";
+  const rawJs = customCode?.js ?? js ?? "";
+  const rawSrcDoc = rawHtml
+    ? injectEditorScript(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>${rawCss}</style>
+</head>
+<body>
+${rawHtml}
+<script>${rawJs}</script>
+</body>
+</html>`)
+    : null;
+  const srcDoc = rawSrcDoc;
 
   // Receive postMessage from iframe
   useEffect(() => {
@@ -120,7 +138,16 @@ const PreviewCanvas = forwardRef(function PreviewCanvas(
               transition: "width .2s ease, height .2s ease, box-shadow .2s ease",
             }}
           >
-            {projectState ? (
+            {customCode ? (
+              <iframe
+                ref={iframeRef}
+                title="preview"
+                data-testid="preview-iframe"
+                srcDoc={srcDoc}
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                className="w-full h-full border-0"
+              />
+            ) : projectState ? (
               <div className="w-full h-full overflow-auto bg-black" data-testid="react-preview">
                 <PremiumWebsiteRenderer website={projectState} editing={editing} selectedId={selectedId} onSelect={onSelectionChange} onUpdate={onElementUpdate} />
               </div>

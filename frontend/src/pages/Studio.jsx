@@ -308,12 +308,31 @@ export default function Studio() {
 
   const handleSaveCode = async () => {
     try {
+      const nextProjectState = activePage?.projectState
+        ? {
+            ...activePage.projectState,
+            renderMode: "projectState",
+            customCode: {
+              enabled: false,
+              html: activePage.html || "",
+              css: activePage.css || "",
+              js: activePage.js || "",
+              updatedAt: new Date().toISOString(),
+            },
+          }
+        : activePage?.projectState;
+
       await updatePage(projectId, activePath, {
-        html: activePage.html,
-        css: activePage.css,
-        js: activePage.js,
+        html: activePage.html || "",
+        css: activePage.css || "",
+        js: activePage.js || "",
+        projectState: nextProjectState,
       });
-      toast.success("Saved");
+
+      const freshProject = await getProject(projectId);
+      setProject(freshProject);
+
+      toast.success("Saved and synced to preview");
     } catch {
       toast.error("Save failed");
     }

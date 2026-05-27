@@ -1897,7 +1897,11 @@ async def ai_generate(payload: GenerateRequest, user: User = Depends(get_current
         if "rate limit" in low or "429" in low:
             raise HTTPException(status_code=429, detail="AI rate limit reached. Try again in a moment.")
         raise HTTPException(status_code=500, detail=f"AI generation failed: {err_text[:200]}")
-    new_html = parsed.get("html", "") or page.get("html", "")
+    # Important:
+    # Do NOT fallback to old page html/css/js on new AI generation.
+    # Old pasted custom code can lock the preview to the previous website.
+    # The generated projectState is now the source of truth for AI websites.
+    new_html = parsed.get("html", "") or ""
     new_css = parsed.get("css", "") or ""
     new_js = parsed.get("js", "") or ""
     summary = parsed.get("summary", "Generated.")
