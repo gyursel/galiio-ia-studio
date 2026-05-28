@@ -31,7 +31,38 @@ export default function PremiumWebsiteRenderer({
   const hero = state.hero || {};
   const footer = state.footer || {};
   const media = state.mediaAssets || {};
-  const navigation = list(state.navigation, ["Experience", "Features", "Work", "Contact"]);
+  const templateId = text(state.templateId, "premium-landing");
+  const templateNavigation = {
+    "saas-product": ["Product", "Workflow", "Pricing", "Demo"],
+    "local-business": ["Services", "About", "Reviews", "Contact"],
+    "hospitality-experience": ["Experience", "Gallery", "Booking", "Reviews"],
+    "portfolio-personal": ["About", "Work", "Skills", "Contact"],
+    "professional-service": ["Trust", "Services", "Process", "Contact"],
+    "ecommerce-product": ["Products", "Benefits", "Details", "Buy"],
+    "real-estate": ["Highlights", "Gallery", "Location", "Contact"],
+    "event-conference": ["Agenda", "Speakers", "Venue", "Tickets"],
+    "mobile-app": ["App", "Features", "Reviews", "Download"],
+    "agency-studio": ["Services", "Work", "Process", "Clients"],
+    "blog-magazine": ["Featured", "Categories", "Latest", "Subscribe"],
+  };
+  const templateCtas = {
+    "saas-product": ["Start Free", "Watch Demo"],
+    "local-business": ["Book a Call", "View Services"],
+    "hospitality-experience": ["Reserve Now", "Explore Gallery"],
+    "portfolio-personal": ["View Work", "Contact Me"],
+    "professional-service": ["Request Consultation", "See Process"],
+    "ecommerce-product": ["Shop Now", "Compare Details"],
+    "real-estate": ["Schedule Viewing", "See Location"],
+    "event-conference": ["Get Tickets", "View Agenda"],
+    "mobile-app": ["Download App", "See Features"],
+    "agency-studio": ["Start Project", "View Work"],
+    "blog-magazine": ["Subscribe", "Read Latest"],
+  };
+  const navigation = list(state.navigation, templateNavigation[templateId] || ["Experience", "Features", "Work", "Contact"]);
+  const [primaryCtaLabel, secondaryCtaLabel] = templateCtas[templateId] || [
+    text(hero.primaryCta, "Get Started"),
+    text(hero.secondaryCta, "Explore"),
+  ];
   const stats = list(state.stats, [
     { title: "Premium", label: "Visual system" },
     { title: "Fast", label: "Launch flow" },
@@ -1133,6 +1164,54 @@ export default function PremiumWebsiteRenderer({
             linear-gradient(90deg, rgba(0,0,0,.66), rgba(0,0,0,.28) 48%, rgba(0,0,0,.5)) !important;
         }
 
+
+        .gpr-template-saas-product .gpr-hero{grid-template-columns:.9fr 1.1fr}
+        .gpr-template-saas-product .gpr-device{width:min(520px,90vw);border-radius:28px}
+        .gpr-template-saas-product .gpr-products{grid-template-columns:1fr}
+        .gpr-template-saas-product .gpr-products div{height:72px}
+
+        .gpr-template-local-business .gpr-hero{grid-template-columns:1fr .8fr}
+        .gpr-template-local-business .gpr-features{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .gpr-template-local-business .gpr-btn{border-radius:14px}
+
+        .gpr-template-hospitality-experience .gpr-hero{min-height:780px}
+        .gpr-template-hospitality-experience .gpr-device{width:min(470px,90vw);min-height:620px;border-radius:52px}
+        .gpr-template-hospitality-experience .gpr-section-grid{grid-template-columns:1.2fr .8fr}
+
+        .gpr-template-portfolio-personal .gpr-hero{grid-template-columns:.85fr 1.15fr}
+        .gpr-template-portfolio-personal .gpr-features{grid-template-columns:repeat(4,minmax(0,1fr))}
+        .gpr-template-portfolio-personal .gpr-feature-card{border-radius:18px}
+
+        .gpr-template-professional-service .gpr-feature-card,
+        .gpr-template-professional-service .gpr-section-card{border-radius:10px}
+
+        .gpr-template-ecommerce-product .gpr-products{grid-template-columns:repeat(2,1fr)}
+        .gpr-template-ecommerce-product .gpr-products div{height:150px}
+        .gpr-template-ecommerce-product .gpr-btn{text-transform:uppercase;letter-spacing:.08em;border-radius:10px}
+
+        .gpr-template-real-estate .gpr-hero{grid-template-columns:1.15fr .85fr}
+        .gpr-template-real-estate .gpr-device{width:min(560px,92vw);min-height:430px;border-radius:34px}
+        .gpr-template-real-estate .gpr-section-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+
+        .gpr-template-event-conference .gpr-hero{grid-template-columns:1fr;text-align:center}
+        .gpr-template-event-conference .gpr-hero > div:first-child{max-width:940px;margin:0 auto}
+        .gpr-template-event-conference .gpr-actions,
+        .gpr-template-event-conference .gpr-stats{justify-content:center}
+        .gpr-template-event-conference .gpr-visual{display:none}
+
+        .gpr-template-mobile-app .gpr-hero{grid-template-columns:1fr .75fr}
+        .gpr-template-mobile-app .gpr-device{width:min(330px,86vw);min-height:650px;border-radius:54px}
+        .gpr-template-mobile-app .gpr-features{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+        .gpr-template-agency-studio .gpr-hero{grid-template-columns:1.2fr .8fr}
+        .gpr-template-agency-studio .gpr-hero h1{font-size:clamp(58px,8.5vw,118px)}
+        .gpr-template-agency-studio .gpr-section-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+
+        .gpr-template-blog-magazine .gpr-hero{grid-template-columns:1fr}
+        .gpr-template-blog-magazine .gpr-visual{display:none}
+        .gpr-template-blog-magazine .gpr-features{grid-template-columns:1.4fr .8fr .8fr}
+        .gpr-template-blog-magazine .gpr-section-card{border-radius:0;border-left:0;border-right:0}
+
         @media (max-width: 900px) {
           .gpr-nav-links { display: none; }
           .gpr-hero { grid-template-columns: 1fr; min-height: auto; }
@@ -1164,7 +1243,7 @@ export default function PremiumWebsiteRenderer({
         );
       })}
 
-      <div className="gpr-wrap">
+      <div className={`gpr-wrap gpr-template-${templateId}`}>
         <nav {...editable("nav", "navigation bar", undefined, { className: "gpr-nav" })}>
           <div {...editable("brandName", "brand", brandName, { className: "gpr-logo" })}>
             <span className="gpr-logo-mark" />
@@ -1187,7 +1266,7 @@ export default function PremiumWebsiteRenderer({
           </div>
 
           <button {...editable("hero.primaryCta", "nav button", text(hero.primaryCta, "Get Started"), { className: "gpr-btn" })}>
-            {text(hero.primaryCta, "Get Started")}
+            {primaryCtaLabel}
           </button>
         </nav>
 
@@ -1207,10 +1286,10 @@ export default function PremiumWebsiteRenderer({
 
             <div {...editable("hero.actions", "hero buttons row", undefined, { className: "gpr-actions" })}>
               <button {...editable("hero.primaryCta", "button", text(hero.primaryCta, "Get Started"), { className: "gpr-btn" })}>
-                {text(hero.primaryCta, "Get Started")}
+                {primaryCtaLabel}
               </button>
               <button {...editable("hero.secondaryCta", "button", text(hero.secondaryCta, "Explore"), { className: "gpr-btn gpr-btn-secondary" })}>
-                {text(hero.secondaryCta, "Explore")}
+                {secondaryCtaLabel}
               </button>
             </div>
 

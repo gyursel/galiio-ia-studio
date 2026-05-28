@@ -97,7 +97,7 @@ export default function Studio() {
 
       if (initialPrompt && !autoBuiltRef.current && p) {
         autoBuiltRef.current = true;
-        setTimeout(() => handleGenerate(initialPrompt, "build"), 250);
+        setTimeout(() => handleGenerate(initialPrompt, "build", p), 250);
       }
     })();
   // This effect must run only when the project changes.
@@ -144,8 +144,11 @@ export default function Studio() {
     }
   };
 
-  const handleGenerate = async (prompt, forcedMode) => {
-    if (!canEdit) {
+  const handleGenerate = async (prompt, forcedMode, accessProject = null) => {
+    const accessRole = accessProject?.role || accessProject?._role || role;
+    const canGenerate = accessRole === "owner" || accessRole === "editor";
+
+    if (!canGenerate) {
       toast.error("You need editor access");
       return;
     }

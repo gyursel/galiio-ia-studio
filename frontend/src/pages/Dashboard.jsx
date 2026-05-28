@@ -332,16 +332,52 @@ export default function Dashboard() {
                 data-testid={`template-${t.id}`}
                 onClick={() => {
                   setShowTemplates(false);
-                  handleCreate(t.name, t.prompt);
+                  const safeTemplatePrompt = [
+                    t.prompt || `Create a premium one-page website for ${t.name} Demo.`,
+                    `Use the template id ${t.id}.`,
+                    `Use the ${t.name} template only as page structure.`,
+                    "Do not use premium-landing unless this card is Premium Landing Page.",
+                  ].join(" ");
+                  const stamp = new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  handleCreate(`${t.name} — Template ${stamp}`, safeTemplatePrompt);
                 }}
-                className="text-left rounded-lg border border-zinc-800 hover:border-zinc-600 overflow-hidden bg-zinc-950 transition-colors"
+                className="group text-left rounded-2xl border border-zinc-800 hover:border-emerald-400/70 overflow-hidden bg-zinc-950 transition-colors"
               >
-                <div className="aspect-[16/10] bg-zinc-900 overflow-hidden">
-                  <img src={t.thumbnail} alt={t.name} className="w-full h-full object-cover opacity-80" />
+                <div className="aspect-[16/10] bg-zinc-900 overflow-hidden relative">
+                  {t.thumbnail ? (
+                    <img src={t.thumbnail} alt={t.name || t.id} className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity" />
+                  ) : (
+                    <div className="w-full h-full bg-zinc-900" />
+                  )}
+                  <div className="absolute left-3 top-3 rounded-full border border-white/15 bg-black/55 px-3 py-1 text-[11px] font-semibold text-white">
+                    {t.id}
+                  </div>
                 </div>
-                <div className="p-3">
-                  <div className="text-sm font-medium tracking-tight">{t.name}</div>
-                  <div className="text-xs text-zinc-500 mt-1">{t.description}</div>
+
+                <div className="p-4">
+                  <div className="text-base font-semibold tracking-tight text-white">
+                    {t.name || t.id || "Template"}
+                  </div>
+                  <div className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                    {t.description || "Universal one-page layout preset."}
+                  </div>
+
+                  {Array.isArray(t.sections) && t.sections.length ? (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {t.sections.slice(0, 4).map((section) => (
+                        <span key={section} className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] text-zinc-300">
+                          {section}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 rounded-xl bg-white px-3 py-2 text-center text-xs font-bold text-black">
+                    Use template
+                  </div>
                 </div>
               </button>
             ))}

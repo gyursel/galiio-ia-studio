@@ -24,6 +24,11 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone, timedelta
 import httpx
 try:
+    from backend.template_layer import list_template_presets
+except ImportError:
+    from template_layer import list_template_presets
+
+try:
     from backend.emergentintegrations.llm.chat import LlmChat, UserMessage
 except ImportError:
     from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -435,12 +440,15 @@ async def create_project(payload: ProjectCreate, user: User = Depends(get_curren
         if isinstance(m.get("added_at"), datetime):
             m["added_at"] = m["added_at"].isoformat()
     await db.projects.insert_one(doc)
-    return project.model_dump()
+    response = project.model_dump()
+    response["role"] = "owner"
+    return response
 
 
 @api_router.get("/projects/{project_id}")
 async def get_project(project_id: str, user: User = Depends(get_current_user)):
     doc = await get_project_for_user(project_id, user, "viewer")
+    doc["role"] = _user_role(doc, user)
     return doc
 
 
@@ -2250,7 +2258,7 @@ TEMPLATES = [
 
 @api_router.get("/templates")
 async def list_templates():
-    return TEMPLATES
+    return list_template_presets()
 
 
 # ============================================================
