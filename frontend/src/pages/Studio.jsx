@@ -100,6 +100,8 @@ export default function Studio() {
         setTimeout(() => handleGenerate(initialPrompt, "build"), 250);
       }
     })();
+  // This effect must run only when the project changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(() => {
