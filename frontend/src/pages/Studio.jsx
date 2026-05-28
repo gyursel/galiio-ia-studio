@@ -23,6 +23,7 @@ import VersionsDialog from "@/components/studio/VersionsDialog";
 import PagesSidebar from "@/components/studio/PagesSidebar";
 import ShareDialog from "@/components/studio/ShareDialog";
 import DomainDialog from "@/components/studio/DomainDialog";
+import { PREMIUM_RENDERERS } from "../components/studio/renderers";
 
 const MODES = ["plan", "build", "debug", "refine", "publish"];
 
@@ -621,6 +622,46 @@ const handleInspectorUpdate = (id, patch) => {
     ? project.pages
     : [{ path: "/", name: "Home", html: project.html || "", css: project.css || "", js: project.js || "" }];
 
+  const rendererStyle = activePage?.projectState?.rendererStyle || "auravitae";
+
+  const handleRendererStyleChange = async (nextStyle) => {
+    if (!activePage?.projectState) {
+      toast.error("No projectState found for this page");
+      return;
+    }
+
+    const nextProjectState = {
+      ...activePage.projectState,
+      rendererStyle: nextStyle,
+      renderMode: "projectState",
+    };
+
+    setProject((prev) => {
+      const nextPages = (prev.pages || []).map((pg) =>
+        pg.path === activePath ? { ...pg, projectState: nextProjectState } : pg
+      );
+
+      return {
+        ...prev,
+        pages: nextPages,
+        projectState: activePath === "/" ? nextProjectState : prev.projectState,
+      };
+    });
+
+    try {
+      await updatePage(projectId, activePath, {
+        html: activePage.html || "",
+        css: activePage.css || "",
+        js: activePage.js || "",
+        projectState: nextProjectState,
+        generatedFiles: activePage.generatedFiles || [],
+      });
+      toast.success("Renderer style updated");
+    } catch {
+      toast.error("Renderer style save failed");
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
       <StudioHeader
@@ -651,6 +692,25 @@ const handleInspectorUpdate = (id, patch) => {
           }
         }}
       />
+
+      <div className="h-12 shrink-0 border-b border-emerald-500/20 bg-zinc-950 px-4 flex items-center justify-center gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-300">
+          Premium Renderer
+        </span>
+
+        <select
+          value={rendererStyle}
+          onChange={(event) => handleRendererStyleChange(event.target.value)}
+          disabled={!canEdit || !activePage?.projectState}
+          className="h-8 min-w-[220px] rounded-lg border border-emerald-500/40 bg-zinc-900 px-3 text-xs font-bold text-zinc-100 outline-none hover:border-emerald-300 disabled:opacity-50"
+        >
+          {PREMIUM_RENDERERS.map((renderer) => (
+            <option key={renderer.id} value={renderer.id}>
+              {renderer.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* Visual edit save bar */}
       {editing && (

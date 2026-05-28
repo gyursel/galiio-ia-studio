@@ -1093,7 +1093,13 @@ async def _search_pexels_media(project_state: Dict[str, Any], prompt: str = "") 
     hero_video = ""
     if videos:
         videos = [v for v in videos if int(v.get("_score", 0)) >= 15] or []
-        files = videos[0].get("video_files") or []
+        files = []
+
+        if videos:
+
+            files = []
+            if videos:
+                files = videos[0].get("video_files") or []
         files = sorted(
             files,
             key=lambda f: (
