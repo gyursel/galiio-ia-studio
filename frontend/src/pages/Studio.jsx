@@ -594,8 +594,32 @@ const handleInspectorUpdate = (id, patch) => {
     setSelected(null);
   };
 
-  const handleOpenLivePreview = () => {
+  const handleOpenLivePreview = async () => {
     const pagePath = encodeURIComponent(activePath || "/");
+    const latestPage = (project?.pages || []).find((pg) => pg.path === activePath) || activePage;
+    const latestProjectState = latestPage?.projectState || activePage?.projectState || project?.projectState || null;
+
+    try {
+      if (latestProjectState) {
+        localStorage.setItem(
+          `galio-preview-state:${projectId}:${activePath || "/"}`,
+          JSON.stringify(latestProjectState)
+        );
+
+        await updatePage(projectId, activePath, {
+          html: latestPage?.html || activePage?.html || "",
+          css: latestPage?.css || activePage?.css || "",
+          js: latestPage?.js || activePage?.js || "",
+          projectState: latestProjectState,
+          generatedFiles: latestPage?.generatedFiles || activePage?.generatedFiles || [],
+        });
+      }
+    } catch (error) {
+      console.error("Preview state save failed", error);
+      toast.error("Preview save failed");
+      return;
+    }
+
     window.open(`/preview/${projectId}?path=${pagePath}`, "_blank", "noopener,noreferrer");
   };
 
@@ -608,21 +632,45 @@ const handleInspectorUpdate = (id, patch) => {
     toast.success(`Inserted: ${cmp.name}`);
   };
 
-  // Persist visual edits: serialize iframe → save html
+  // Persist visual edits: save both iframe HTML and current projectState/overrides.
   const handleSerialize = async (html) => {
     if (!html) return;
+
     try {
-      await updatePage(projectId, activePath, { html });
+      await updatePage(projectId, activePath, {
+        html,
+        css: activePage?.css || "",
+        js: activePage?.js || "",
+        projectState: activePage?.projectState || project?.projectState || null,
+        generatedFiles: activePage?.generatedFiles || [],
+      });
+
       const p = await loadProject();
       setProject(p);
       toast.success("Visual edits saved");
-    } catch {
+    } catch (error) {
+      console.error("Save visual edits failed", error);
       toast.error("Save failed");
     }
   };
 
-  const saveVisualEdits = () => {
-    previewRef.current?.serialize();
+  const saveVisualEdits = async () => {
+    try {
+      if (activePage?.projectState) {
+        await updatePage(projectId, activePath, {
+          html: activePage.html || "",
+          css: activePage.css || "",
+          js: activePage.js || "",
+          projectState: activePage.projectState,
+          generatedFiles: activePage.generatedFiles || [],
+        });
+      }
+
+      previewRef.current?.serialize();
+    } catch (error) {
+      console.error("Save visual edits failed", error);
+      toast.error("Save failed");
+    }
   };
 
   if (!project) {

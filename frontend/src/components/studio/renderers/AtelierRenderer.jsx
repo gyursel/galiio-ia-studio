@@ -54,6 +54,10 @@ export default function AtelierRenderer({
     return overrides[id]?.text ?? fallback;
   }
 
+  function content(id, fallback = "") {
+    return overrideText(id, text(fallback, ""));
+  }
+
   function overrideMediaUrl(id, fallback = "") {
     return overrides[id]?.mediaUrl ?? fallback;
   }
@@ -616,7 +620,7 @@ export default function AtelierRenderer({
           </div>
 
           <div {...editable("brandName", "brand", brandName, { className: "at-logo" })}>
-            <strong>{brandName}</strong>
+            <strong>{content("brandName", brandName)}</strong>
             <span>{industry}</span>
           </div>
 
@@ -632,8 +636,8 @@ export default function AtelierRenderer({
               {text(hero.eyebrow, industry)}
             </div>
 
-            <h1 {...editable("hero.headline", "hero headline", text(hero.headline, `A curated world for ${brandName}`))}>
-              {text(hero.headline, `A curated world for ${brandName}`)}
+            <h1 {...editable("hero.headline", "hero headline", text(hero.headline, `A curated world for ${content("brandName", brandName)}`))}>
+              {text(hero.headline, `A curated world for ${content("brandName", brandName)}`)}
             </h1>
 
             <p {...editable("hero.subheadline", "hero subheadline", text(hero.subheadline, tagline))}>
@@ -714,14 +718,14 @@ export default function AtelierRenderer({
         ) : null}
 
         <section id="contact" className="at-cta">
-          <h2>{text(footer.headline, `Begin the next chapter of ${brandName}.`)}</h2>
+          <h2>{text(footer.headline, `Begin the next chapter of ${content("brandName", brandName)}.`)}</h2>
           <button {...editable("footer.cta", "footer CTA", text(footer.cta, "Start Conversation"), { className: "at-btn" })}>
             {text(footer.cta, "Start Conversation")}
           </button>
         </section>
 
         <footer className="at-footer">
-          <span>{brandName}</span>
+          <span>{content("brandName", brandName)}</span>
           <span>{tagline}</span>
         </footer>
       </div>

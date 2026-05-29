@@ -97,7 +97,21 @@ export default function ProjectPreview() {
     return pages.find((p) => p.path === path) || pages[0] || null;
   }, [project, path]);
 
-  const websiteBase = activePage?.projectState || project?.projectState || null;
+  const websiteBase = React.useMemo(() => {
+    const savedBase = activePage?.projectState || project?.projectState || null;
+
+    try {
+      const raw = localStorage.getItem(`galio-preview-state:${projectId}:${path || "/"}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") return parsed;
+      }
+    } catch {
+      // Ignore local preview cache errors and use backend state.
+    }
+
+    return savedBase;
+  }, [activePage, project, projectId, path]);
 
   // Merge live local overrides so renderer reflects edits immediately
   const website = React.useMemo(() => {
