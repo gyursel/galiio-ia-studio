@@ -223,8 +223,13 @@ export default function PremiumWebsiteRenderer({
   const pricing = list(state.pricing, []);
   const customElements = list(state.customElements, []);
  
-  function overrideClass(id) { return text(overrides[id]?.classes, ""); }
-  function overrideStyle(id) { return overrides[id]?.styles || {}
+  function overrideClass(id) {
+    return text(overrides[id]?.classes, "");
+  }
+
+  function overrideStyle(id) {
+    return overrides[id]?.styles || {};
+  }
 
   function overrideText(id, fallback = "") {
     return overrides[id]?.text ?? fallback;
@@ -232,8 +237,11 @@ export default function PremiumWebsiteRenderer({
 
   function overrideMediaUrl(id, fallback = "") {
     return overrides[id]?.mediaUrl ?? fallback;
-  }; }
-  function dataId(id) { return String(id || "").replace(/"/g, "&quot;"); }
+  }
+
+  function dataId(id) {
+    return String(id || "").replace(/"/g, "&quot;");
+  }
  
   function cssValue(key, value) {
     const raw = String(value ?? "").replace(/;/g, "").trim();

@@ -175,7 +175,8 @@ export default function PremiumWebsiteRenderer({
   }
 
   function overrideStyle(id) {
-    return overrides[id]?.styles || {}
+    return overrides[id]?.styles || {};
+  }
 
   function overrideText(id, fallback = "") {
     return overrides[id]?.text ?? fallback;
@@ -183,7 +184,6 @@ export default function PremiumWebsiteRenderer({
 
   function overrideMediaUrl(id, fallback = "") {
     return overrides[id]?.mediaUrl ?? fallback;
-  };
   }
 
   function dataId(id) {

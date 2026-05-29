@@ -53,7 +53,8 @@ export default function MonacoRenderer({
   }
 
   function overrideStyle(id) {
-    return overrides[id]?.styles || {}
+    return overrides[id]?.styles || {};
+  }
 
   function overrideText(id, fallback = "") {
     return overrides[id]?.text ?? fallback;
@@ -61,7 +62,6 @@ export default function MonacoRenderer({
 
   function overrideMediaUrl(id, fallback = "") {
     return overrides[id]?.mediaUrl ?? fallback;
-  };
   }
 
   function editable(id, tag, value, extra = {}) {
