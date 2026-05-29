@@ -81,27 +81,7 @@ function normalizeGeneratedFiles(activePage) {
     ? activePage.generatedFiles
     : [];
 
-  if (generated.length) {
-    return generated.map((file, index) => {
-      const path = file.path || file.name || `generated/file-${index + 1}`;
-      const name = file.name || String(path).split("/").pop() || `file-${index + 1}`;
-      const language = file.language || file.kind || "text";
-
-      return {
-        id: file.id || path || name,
-        label: name,
-        name,
-        path,
-        type: String(language).toUpperCase(),
-        language,
-        editable: file.editable !== false,
-        content: typeof file.content === "string" ? file.content : "",
-        icon: fileIcon(language),
-      };
-    });
-  }
-
-  return FALLBACK_FILES.map((file) => {
+  const liveCoreFiles = FALLBACK_FILES.map((file) => {
     const content =
       file.id === "projectState"
         ? JSON.stringify(activePage?.projectState || {}, null, 2)
@@ -109,6 +89,37 @@ function normalizeGeneratedFiles(activePage) {
 
     return { ...file, content };
   });
+
+  const normalizedGenerated = generated.map((file, index) => {
+    const path = file.path || file.name || `generated/file-${index + 1}`;
+    const name = file.name || String(path).split("/").pop() || `file-${index + 1}`;
+    const language = file.language || file.kind || "text";
+
+    return {
+      id: file.id || path || name,
+      label: name,
+      name,
+      path,
+      type: String(language).toUpperCase(),
+      language,
+      editable: file.editable !== false,
+      content: typeof file.content === "string" ? file.content : "",
+      icon: fileIcon(language),
+    };
+  });
+
+  const byPath = new Map();
+
+  for (const file of normalizedGenerated) {
+    byPath.set(file.path || file.id || file.name, file);
+  }
+
+  // Critical: live page state must win over stale generatedFiles.
+  for (const file of liveCoreFiles) {
+    byPath.set(file.path || file.id || file.name, file);
+  }
+
+  return Array.from(byPath.values());
 }
 
 function getFileValue(file) {

@@ -18,6 +18,7 @@ const PreviewCanvas = forwardRef(function PreviewCanvas(
   const previewRootRef = useRef(null);
   const size = DEVICE_SIZES[device] || DEVICE_SIZES.desktop;
   const customCode = projectState?.renderMode === "customCode" && projectState?.customCode?.enabled ? projectState.customCode : null;
+  const hasReactRenderer = Boolean(projectState?.rendererStyle);
   const rawHtml = customCode?.html ?? html ?? "";
   const rawCss = customCode?.css ?? css ?? "";
   const rawJs = customCode?.js ?? js ?? "";
@@ -54,7 +55,7 @@ ${rawHtml}
 
   // Inject editor script into /preview/ src iframes and toggle edit mode.
   // For srcDoc iframes the script is already baked in via injectEditorScript.
-  const isRemoteIframe = Boolean(projectState && !customCode);
+  const isRemoteIframe = Boolean(hasReactRenderer && projectState && !customCode);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -121,7 +122,74 @@ ${rawHtml}
       );
     },
     serialize() {
-      iframeRef.current?.contentWindow?.postMessage({ type: "galio:serialize" }, "*");
+      console.log("[GALIO DEBUG] PreviewCanvas serialize called", { isRemoteIframe });
+      console.log("[GALIO DEBUG] PreviewCanvas serialize called", { isRemoteIframe });
+      console.log("[GALIO DEBUG] PreviewCanvas serialize called", { isRemoteIframe });
+      console.log("[GALIO DEBUG] PreviewCanvas serialize called", { isRemoteIframe });
+      console.log("[GALIO DEBUG] PreviewCanvas serialize called", { isRemoteIframe });
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+
+      // For srcDoc (legacy/html) iframes: read the live DOM directly.
+      // This is reliable and does not depend on the injected editor script
+      // responding to a postMessage round-trip.
+      if (!isRemoteIframe) {
+        try {
+          const doc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (doc && doc.documentElement) {
+            const clone = doc.body.cloneNode(true);
+
+            clone
+              .querySelectorAll(
+                [
+                  "[data-galio-editor-ui]",
+                  "[data-galio-overlay]",
+                  ".galio-editor-ui",
+                  ".galio-selection-overlay",
+                  ".galio-resize-handle",
+                  ".galio-floating-toolbar",
+                  ".vpr-ed-sel",
+                  ".mo-selected",
+                  ".gpr-pro-overlay-label",
+                  ".gpr-pro-move",
+                  "script[data-galio-editor-script]",
+                ].join(",")
+              )
+              .forEach((node) => node.remove());
+
+            const serialized = clone.innerHTML || "";
+            console.log("[GALIO DEBUG] direct DOM serialized", {
+              length: serialized.length,
+              preview: serialized.slice(0, 300),
+            });
+            console.log("[GALIO DEBUG] direct DOM serialized", {
+              length: serialized.length,
+              preview: serialized.slice(0, 300),
+            });
+            console.log("[GALIO DEBUG] direct DOM serialized", {
+              length: serialized.length,
+              preview: serialized.slice(0, 300),
+            });
+            console.log("[GALIO DEBUG] direct DOM serialized", {
+              length: serialized.length,
+              preview: serialized.slice(0, 300),
+            });
+            console.log("[GALIO DEBUG] direct DOM serialized", {
+              length: serialized.length,
+              preview: serialized.slice(0, 300),
+            });
+            onSerialize?.(serialized);
+            return;
+          }
+        } catch (e) {
+          // Cross-origin guard — fall through to postMessage
+          console.warn("[Galio] Direct DOM serialize failed, falling back to postMessage", e);
+        }
+      }
+
+      // For React-renderer iframes (/preview/ route) or cross-origin fallback:
+      // use postMessage; the response arrives via the galio:serialized listener above.
+      iframe.contentWindow?.postMessage({ type: "galio:serialize" }, "*");
     },
   }));
 
@@ -184,7 +252,7 @@ ${rawHtml}
                 sandbox="allow-scripts allow-same-origin allow-forms"
                 className="w-full h-full border-0"
               />
-            ) : projectState ? (
+            ) : hasReactRenderer ? (
               <iframe
                 ref={iframeRef}
                 key={`${projectId}-${activePath}-${projectState?.rendererStyle}`}

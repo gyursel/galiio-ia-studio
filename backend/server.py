@@ -137,7 +137,6 @@ class PageUpdate(BaseModel):
     js: Optional[str] = None
     projectState: Optional[Dict[str, Any]] = None
     generatedFiles: Optional[List[Dict[str, Any]]] = None
-    generatedFiles: Optional[List[Dict[str, Any]]] = None
 
 
 class InviteRequest(BaseModel):
@@ -536,18 +535,23 @@ async def update_page(project_id: str, path: str, payload: PageUpdate, user: Use
     page = next((p for p in pages if p["path"] == path), None)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+    updates = payload.model_dump(exclude_unset=True)
+    updates = {k: v for k, v in updates.items() if v is not None}
     page.update(updates)
+
     set_doc: Dict[str, Any] = {"pages": pages, "updated_at": datetime.now(timezone.utc).isoformat()}
     if path == "/":
-        # mirror into top-level for backward compat
-        if "html" in updates: set_doc["html"] = updates["html"]
-        if "css" in updates: set_doc["css"] = updates["css"]
-        if "js" in updates: set_doc["js"] = updates["js"]
-        if "projectState" in updates: set_doc["projectState"] = updates["projectState"]
-        if "generatedFiles" in updates: set_doc["generatedFiles"] = updates["generatedFiles"]
-        if "projectState" in updates: set_doc["projectState"] = updates["projectState"]
-        if "generatedFiles" in updates: set_doc["generatedFiles"] = updates["generatedFiles"]
+        # Mirror into top-level for backward compatibility.
+        if "html" in updates:
+            set_doc["html"] = updates["html"]
+        if "css" in updates:
+            set_doc["css"] = updates["css"]
+        if "js" in updates:
+            set_doc["js"] = updates["js"]
+        if "projectState" in updates:
+            set_doc["projectState"] = updates["projectState"]
+        if "generatedFiles" in updates:
+            set_doc["generatedFiles"] = updates["generatedFiles"]
     await db.projects.update_one({"project_id": project_id}, {"$set": set_doc})
     return page
 
@@ -2204,26 +2208,93 @@ def _path_to_filename(path: str) -> str:
 async def export_project(project_id: str, user: User = Depends(get_current_user)):
     project = await get_project_for_user(project_id, user, "viewer")
 
+    def safe_zip_path(value: str, fallback: str = "file.txt") -> str:
+        raw = str(value or fallback).replace("\\", "/").strip().lstrip("/")
+        parts = []
+        for part in raw.split("/"):
+            part = part.strip()
+            if not part or part in (".", ".."):
+                continue
+            cleaned = "".join(c for c in part if c.isalnum() or c in ("_", "-", ".", " "))
+            if cleaned:
+                parts.append(cleaned)
+        return "/".join(parts) or fallback
+
+    def write_unique(zf, used: set, path: str, content: str):
+        base = safe_zip_path(path)
+        candidate = base
+        if candidate in used:
+            stem, dot, ext = base.rpartition(".")
+            if not dot:
+                stem, ext = base, ""
+            i = 2
+            while candidate in used:
+                candidate = f"{stem}-{i}.{ext}" if ext else f"{stem}-{i}"
+                i += 1
+        used.add(candidate)
+        zf.writestr(candidate, content if isinstance(content, str) else str(content or ""))
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        used = set()
         pages = project.get("pages", []) or []
         if not pages:
-            pages = [{"path": "/", "name": "Home",
-                       "html": project.get("html") or "<html><body>Empty</body></html>",
-                       "css": project.get("css") or "", "js": project.get("js") or ""}]
-        for p in pages:
-            filename = _path_to_filename(p["path"])
-            zf.writestr(filename, p.get("html") or "<html><body>Empty</body></html>")
-        # combined assets (page 0)
-        zf.writestr("styles.css", pages[0].get("css") or "/* empty */")
-        zf.writestr("script.js", pages[0].get("js") or "// empty")
+            pages = [{
+                "path": "/",
+                "name": "Home",
+                "html": project.get("html") or "<html><body>Empty</body></html>",
+                "css": project.get("css") or "",
+                "js": project.get("js") or "",
+                "projectState": project.get("projectState") or None,
+                "generatedFiles": project.get("generatedFiles") or [],
+            }]
+
+        first_page = pages[0] if pages else {}
+
+        for page in pages:
+            filename = _path_to_filename(page.get("path") or "/")
+            write_unique(zf, used, filename, page.get("html") or "<html><body>Empty</body></html>")
+
+            project_state = page.get("projectState")
+            if project_state is not None:
+                state_name = "projectState.json" if page is first_page else f"pages/{filename}.projectState.json"
+                write_unique(zf, used, state_name, json.dumps(project_state, ensure_ascii=False, indent=2))
+
+        write_unique(zf, used, "styles.css", first_page.get("css") or project.get("css") or "/* empty */")
+        write_unique(zf, used, "script.js", first_page.get("js") or project.get("js") or "// empty")
+
+        # Include extra generated files, but never let stale generated core files replace live HTML/CSS/JS/state.
+        skipped_core = {
+            "index.html",
+            "styles.css",
+            "script.js",
+            "projectState.json",
+            "src/generated/index.html",
+            "src/generated/styles.css",
+            "src/generated/script.js",
+            "src/generated/projectState.json",
+        }
+
+        for page_index, page in enumerate(pages):
+            for file in page.get("generatedFiles") or []:
+                path = safe_zip_path(file.get("path") or file.get("name") or "generated/file.txt")
+                normalized = path.strip("/")
+                if normalized in skipped_core:
+                    continue
+                content = file.get("content")
+                if content is None:
+                    continue
+                prefix = "" if page_index == 0 else f"pages/page-{page_index + 1}/"
+                write_unique(zf, used, f"{prefix}{normalized}", content)
+
         readme = (
             f"# {project.get('name', 'Galio Project')}\n\n"
             f"Generated by Galio AI Studio.\n\n"
-            f"Pages:\n" + "\n".join(f"- {p['path']} ({_path_to_filename(p['path'])})" for p in pages) + "\n\n"
+            f"Pages:\n" + "\n".join(f"- {p.get('path', '/')} ({_path_to_filename(p.get('path', '/'))})" for p in pages) + "\n\n"
             f"Open index.html in a browser.\n"
         )
-        zf.writestr("README.md", readme)
+        write_unique(zf, used, "README.md", readme)
+
     buf.seek(0)
     safe_name = "".join(c for c in project.get("name", "project") if c.isalnum() or c in ("_", "-")) or "project"
     return StreamingResponse(

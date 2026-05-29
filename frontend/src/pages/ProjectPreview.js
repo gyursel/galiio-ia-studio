@@ -19,6 +19,7 @@ export default function ProjectPreview() {
 
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // ── Load project ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -37,7 +38,40 @@ export default function ProjectPreview() {
     }
     load();
     return () => { alive = false; };
-  }, [projectId, navigate]);
+  }, [projectId, navigate, refreshTick]);
+
+  // ── Refresh preview when Studio saves edits ──────────────────────────────
+  useEffect(() => {
+    const refreshKey = `galio-preview-refresh:${projectId}:${path || "/"}`;
+    let lastSeen = localStorage.getItem(refreshKey) || "";
+
+    const refresh = () => {
+      const nextSeen = localStorage.getItem(refreshKey) || "";
+      if (nextSeen && nextSeen !== lastSeen) {
+        lastSeen = nextSeen;
+        setOverrides({});
+        setRefreshTick((tick) => tick + 1);
+      }
+    };
+
+    const onStorage = (event) => {
+      if (event.key === refreshKey) refresh();
+    };
+
+    const onFocus = () => {
+      setRefreshTick((tick) => tick + 1);
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(refresh, 1500);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
+  }, [projectId, path]);
 
   // ── Local overrides state (applied immediately to renderer) ──────────────
   const [overrides, setOverrides] = React.useState({});
@@ -98,20 +132,8 @@ export default function ProjectPreview() {
   }, [project, path]);
 
   const websiteBase = React.useMemo(() => {
-    const savedBase = activePage?.projectState || project?.projectState || null;
-
-    try {
-      const raw = localStorage.getItem(`galio-preview-state:${projectId}:${path || "/"}`);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object") return parsed;
-      }
-    } catch {
-      // Ignore local preview cache errors and use backend state.
-    }
-
-    return savedBase;
-  }, [activePage, project, projectId, path]);
+    return activePage?.projectState || project?.projectState || null;
+  }, [activePage, project]);
 
   // Merge live local overrides so renderer reflects edits immediately
   const website = React.useMemo(() => {

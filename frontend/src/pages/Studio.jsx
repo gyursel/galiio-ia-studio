@@ -52,6 +52,7 @@ export default function Studio() {
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState(null);
   const previewRef = useRef(null);
+  const latestProjectStateRef = useRef(null);
 
   const autoBuiltRef = useRef(false);
 
@@ -132,7 +133,8 @@ export default function Studio() {
   };
 
   const saveProjectStatePatch = async (nextProjectState, pageSnapshot) => {
-    // pageSnapshot is passed explicitly to avoid stale-closure reads of activePage.
+    latestProjectStateRef.current = nextProjectState;
+
     const snap = pageSnapshot || activePage;
     try {
       await updatePage(projectId, activePath, {
@@ -142,8 +144,11 @@ export default function Studio() {
         projectState: nextProjectState,
         generatedFiles: snap?.generatedFiles || [],
       });
-    } catch {
+      return true;
+    } catch (error) {
+      console.error("React edit save failed", error);
       toast.error("React edit save failed");
+      return false;
     }
   };
 
@@ -275,13 +280,43 @@ export default function Studio() {
     }
   };
 
-  const handleExport = () => {
-    if (!activePage?.html) {
+  const handleExport = async () => {
+    const latestPage = (project?.pages || []).find((pg) => pg.path === activePath) || activePage;
+    const latestProjectState =
+      latestPage?.projectState ||
+      activePage?.projectState ||
+      project?.projectState ||
+      null;
+
+    if (!latestPage?.html && !latestProjectState) {
       toast.error("Nothing to export yet — build the site first.");
       return;
     }
-    window.open(exportProjectUrl(projectId), "_blank");
-    toast.success("Exporting ZIP…");
+
+    try {
+      await updatePage(projectId, activePath, {
+        html: latestPage?.html || activePage?.html || "",
+        css: latestPage?.css || activePage?.css || "",
+        js: latestPage?.js || activePage?.js || "",
+        projectState: latestProjectState,
+        generatedFiles: latestPage?.generatedFiles || activePage?.generatedFiles || [],
+      });
+
+      localStorage.setItem(
+        `galio-preview-state:${projectId}:${activePath || "/"}`,
+        JSON.stringify(latestProjectState)
+      );
+      broadcastPreviewRefresh(activePath);
+
+      toast.success("Saving latest edits before export…");
+
+      window.setTimeout(() => {
+        window.open(exportProjectUrl(projectId), "_blank");
+      }, 450);
+    } catch (error) {
+      console.error("Export save failed", error);
+      toast.error("Export failed — latest edits were not saved.");
+    }
   };
 
   const handleGithubPush = async () => {
@@ -484,9 +519,19 @@ export default function Studio() {
   return target;
 };
 
-const handleInspectorUpdate = (id, patch) => {
+const cloneProjectState = (value) => {
+  try {
+    return structuredClone(value || {});
+  } catch {
+    return JSON.parse(JSON.stringify(value || {}));
+  }
+};
+
+const handleInspectorUpdate = async (id, patch) => {
     if (activePage?.projectState) {
-      let nextProjectState = activePage.projectState;
+      let nextProjectState = cloneProjectState(
+        latestProjectStateRef.current || activePage.projectState
+      );
 
       if (patch?.delete === true) {
         if (String(id).startsWith("customElements.")) {
@@ -557,6 +602,8 @@ const handleInspectorUpdate = (id, patch) => {
         };
       }
 
+      latestProjectStateRef.current = nextProjectState;
+
       setProject((prev) => {
         const pages = (prev.pages || []).map((pg) =>
           pg.path === activePath ? { ...pg, projectState: nextProjectState } : pg
@@ -568,8 +615,42 @@ const handleInspectorUpdate = (id, patch) => {
         };
       });
 
-      saveProjectStatePatch(nextProjectState, activePage);
-      // Forward patch to iframe so ProjectPreview re-renders immediately
+      try {
+        const previewPath = activePath || "/";
+        const payload = {
+          projectId,
+          path: previewPath,
+          projectState: nextProjectState,
+          ts: Date.now(),
+        };
+
+        localStorage.setItem(
+          `galio-preview-state:${projectId}:${previewPath}`,
+          JSON.stringify(nextProjectState)
+        );
+        localStorage.setItem(
+          `galio-preview-refresh:${projectId}:${previewPath}`,
+          String(payload.ts)
+        );
+
+        if ("BroadcastChannel" in window) {
+          const channel = new BroadcastChannel("galio-preview-sync");
+          channel.postMessage(payload);
+          channel.close();
+        }
+      } catch {
+        // Ignore preview sync errors.
+      }
+
+      await updatePage(projectId, activePath, {
+        html: activePage?.html || "",
+        css: activePage?.css || "",
+        js: activePage?.js || "",
+        projectState: nextProjectState,
+        generatedFiles: activePage?.generatedFiles || [],
+      });
+
+      // Forward patch to iframe so Studio preview re-renders immediately
       previewRef.current?.update(id, patch);
       if (patch?.delete !== true) {
         setSelected((s) =>
@@ -596,31 +677,29 @@ const handleInspectorUpdate = (id, patch) => {
 
   const handleOpenLivePreview = async () => {
     const pagePath = encodeURIComponent(activePath || "/");
-    const latestPage = (project?.pages || []).find((pg) => pg.path === activePath) || activePage;
-    const latestProjectState = latestPage?.projectState || activePage?.projectState || project?.projectState || null;
+    const latestProjectState =
+      latestProjectStateRef.current ||
+      activePage?.projectState ||
+      project?.projectState ||
+      null;
 
     try {
       if (latestProjectState) {
-        localStorage.setItem(
-          `galio-preview-state:${projectId}:${activePath || "/"}`,
-          JSON.stringify(latestProjectState)
-        );
-
         await updatePage(projectId, activePath, {
-          html: latestPage?.html || activePage?.html || "",
-          css: latestPage?.css || activePage?.css || "",
-          js: latestPage?.js || activePage?.js || "",
+          html: activePage?.html || "",
+          css: activePage?.css || "",
+          js: activePage?.js || "",
           projectState: latestProjectState,
-          generatedFiles: latestPage?.generatedFiles || activePage?.generatedFiles || [],
+          generatedFiles: activePage?.generatedFiles || [],
         });
       }
     } catch (error) {
-      console.error("Preview state save failed", error);
+      console.error("Preview save failed", error);
       toast.error("Preview save failed");
       return;
     }
 
-    window.open(`/preview/${projectId}?path=${pagePath}`, "_blank", "noopener,noreferrer");
+    window.open(`/preview/${projectId}?path=${pagePath}&t=${Date.now()}`, "_blank", "noopener,noreferrer");
   };
 
   const handleInsertComponent = (cmp) => {
@@ -632,21 +711,62 @@ const handleInspectorUpdate = (id, patch) => {
     toast.success(`Inserted: ${cmp.name}`);
   };
 
-  // Persist visual edits: save both iframe HTML and current projectState/overrides.
+  // Persist visual edits: called by PreviewCanvas after iframe DOM serialization.
+  // Persist visual edits: save the actual edited iframe HTML and update local state immediately.
   const handleSerialize = async (html) => {
-    if (!html) return;
+    console.log("[GALIO DEBUG] handleSerialize called", {
+      length: String(html || "").length,
+      preview: String(html || "").slice(0, 300),
+    });
+
+    const nextHtml = String(html || "").trim();
+
+    if (!nextHtml) {
+      toast.error("Nothing changed to save.");
+      return;
+    }
+
+    const latestProjectState =
+      latestProjectStateRef?.current ||
+      activePage?.projectState ||
+      project?.projectState ||
+      null;
+
+    const nextPage = {
+      ...activePage,
+      html: nextHtml,
+      css: activePage?.css || "",
+      js: activePage?.js || "",
+      projectState: latestProjectState,
+      generatedFiles: activePage?.generatedFiles || [],
+    };
 
     try {
       await updatePage(projectId, activePath, {
-        html,
-        css: activePage?.css || "",
-        js: activePage?.js || "",
-        projectState: activePage?.projectState || project?.projectState || null,
-        generatedFiles: activePage?.generatedFiles || [],
+        html: nextPage.html,
+        css: nextPage.css,
+        js: nextPage.js,
+        projectState: nextPage.projectState,
+        generatedFiles: nextPage.generatedFiles,
       });
 
-      const p = await loadProject();
-      setProject(p);
+      setProject((prev) => {
+        if (!prev) return prev;
+
+        const pages = (prev.pages || []).map((pg) =>
+          pg.path === activePath ? { ...pg, ...nextPage } : pg
+        );
+
+        return {
+          ...prev,
+          html: activePath === "/" ? nextHtml : prev.html,
+          css: activePath === "/" ? nextPage.css : prev.css,
+          js: activePath === "/" ? nextPage.js : prev.js,
+          projectState: activePath === "/" ? latestProjectState : prev.projectState,
+          pages,
+        };
+      });
+
       toast.success("Visual edits saved");
     } catch (error) {
       console.error("Save visual edits failed", error);
@@ -655,22 +775,13 @@ const handleInspectorUpdate = (id, patch) => {
   };
 
   const saveVisualEdits = async () => {
-    try {
-      if (activePage?.projectState) {
-        await updatePage(projectId, activePath, {
-          html: activePage.html || "",
-          css: activePage.css || "",
-          js: activePage.js || "",
-          projectState: activePage.projectState,
-          generatedFiles: activePage.generatedFiles || [],
-        });
-      }
+    console.log("[GALIO DEBUG] saveVisualEdits clicked", {
+      hasPreviewRef: Boolean(previewRef.current),
+      activePath,
+      projectId,
+    });
 
-      previewRef.current?.serialize();
-    } catch (error) {
-      console.error("Save visual edits failed", error);
-      toast.error("Save failed");
-    }
+    previewRef.current?.serialize();
   };
 
   if (!project) {
@@ -684,6 +795,17 @@ const handleInspectorUpdate = (id, patch) => {
   const pages = project.pages?.length
     ? project.pages
     : [{ path: "/", name: "Home", html: project.html || "", css: project.css || "", js: project.js || "" }];
+
+  const broadcastPreviewRefresh = (pagePath = activePath) => {
+    try {
+      localStorage.setItem(
+        `galio-preview-refresh:${projectId}:${pagePath || "/"}`,
+        String(Date.now())
+      );
+    } catch {
+      // Ignore localStorage errors.
+    }
+  };
 
   const rendererStyle = activePage?.projectState?.rendererStyle || "auravitae";
 
