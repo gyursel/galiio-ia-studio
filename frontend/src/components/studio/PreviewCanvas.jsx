@@ -2,6 +2,7 @@ import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react
 import { Wand2, RefreshCw, MousePointer2, X } from "lucide-react";
 import { injectEditorScript } from "@/lib/iframeEditor";
 import PremiumWebsiteRenderer from "@/components/studio/PremiumWebsiteRenderer";
+import UniversalVisualEditOverlay from "@/components/studio/UniversalVisualEditOverlay";
 
 const DEVICE_SIZES = {
   desktop: { width: "100%", maxWidth: 1280, label: "1280×800" },
@@ -14,6 +15,7 @@ const PreviewCanvas = forwardRef(function PreviewCanvas(
   ref
 ) {
   const iframeRef = useRef(null);
+  const previewRootRef = useRef(null);
   const size = DEVICE_SIZES[device] || DEVICE_SIZES.desktop;
   const customCode = projectState?.renderMode === "customCode" && projectState?.customCode?.enabled ? projectState.customCode : null;
   const rawHtml = customCode?.html ?? html ?? "";
@@ -148,8 +150,24 @@ ${rawHtml}
                 className="w-full h-full border-0"
               />
             ) : projectState ? (
-              <div className="w-full h-full overflow-auto bg-black" data-testid="react-preview">
-                <PremiumWebsiteRenderer website={projectState} editing={editing} selectedId={selectedId} onSelect={onSelectionChange} onUpdate={onElementUpdate} />
+              <div
+                ref={previewRootRef}
+                className="relative w-full h-full overflow-auto bg-black"
+                data-testid="react-preview"
+              >
+                <PremiumWebsiteRenderer
+                  website={projectState}
+                  editing={editing}
+                  selectedId={selectedId}
+                  onSelect={onSelectionChange}
+                  onUpdate={onElementUpdate}
+                />
+                <UniversalVisualEditOverlay
+                  rootRef={previewRootRef}
+                  editing={editing}
+                  selectedId={selectedId}
+                  onElementUpdate={onElementUpdate}
+                />
               </div>
             ) : (
               <iframe

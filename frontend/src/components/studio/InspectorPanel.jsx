@@ -1,425 +1,460 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Box, Image, SlidersHorizontal, Type } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { searchPexelsMedia } from "@/lib/api";
+import React, { useMemo, useRef, useState } from "react";
 
-function Section({ icon: Icon, title, children }) {
+const CLIPBOARD_KEY = "galio_visual_editor_clipboard_v1";
+
+const FONT_FAMILIES = [
+  { label: "Default", value: "" },
+  { label: "Inter", value: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  { label: "Serif Luxury", value: "Georgia, 'Times New Roman', serif" },
+  { label: "Mono Tech", value: "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" },
+  { label: "System", value: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+  { label: "Arial", value: "Arial, Helvetica, sans-serif" },
+];
+
+const SHADOWS = [
+  { label: "None", value: "none" },
+  { label: "Soft", value: "0 18px 45px rgba(0,0,0,.16)" },
+  { label: "Premium", value: "0 28px 90px rgba(0,0,0,.28)" },
+  { label: "Glow", value: "0 0 0 1px rgba(255,255,255,.12), 0 24px 80px rgba(16,185,129,.28)" },
+  { label: "Deep", value: "0 40px 120px rgba(0,0,0,.42)" },
+];
+
+const CONTROLLED_STYLE_KEYS = [
+  "color",
+  "background",
+  "backgroundColor",
+  "borderColor",
+  "opacity",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "letterSpacing",
+  "lineHeight",
+  "textAlign",
+  "padding",
+  "margin",
+  "width",
+  "height",
+  "minHeight",
+  "maxWidth",
+  "borderRadius",
+  "boxShadow",
+  "border",
+  "objectFit",
+];
+
+function text(value, fallback = "") {
+  const v = String(value ?? "").trim();
+  return v || fallback;
+}
+
+function readClipboard() {
+  try {
+    return JSON.parse(window.localStorage.getItem(CLIPBOARD_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function writeClipboard(payload) {
+  window.localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(payload || {}));
+}
+
+function Section({ title, children, defaultOpen = true }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-      <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">
-        {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+    <details open={defaultOpen} className="rounded-2xl border border-zinc-800 bg-zinc-950/70">
+      <summary className="cursor-pointer select-none px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-300">
         {title}
-      </div>
-      <div className="space-y-3">{children}</div>
-    </div>
+      </summary>
+      <div className="space-y-3 border-t border-zinc-800 p-3">{children}</div>
+    </details>
   );
 }
 
 function Field({ label, children }) {
   return (
-    <label className="block">
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-        {label}
-      </div>
+    <label className="block space-y-1">
+      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-500">{label}</span>
       {children}
     </label>
   );
 }
 
-function Row({ children }) {
-  return <div className="grid grid-cols-2 gap-2">{children}</div>;
+function Input(props) {
+  return (
+    <input
+      {...props}
+      className={`h-9 w-full rounded-xl border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none focus:border-emerald-400 ${props.className || ""}`}
+    />
+  );
 }
 
-export default function InspectorPanel({ selected, onUpdate, editing }) {
-  const safeSelected = selected || {};
-  const styles = safeSelected.styles || {};
+function Select(props) {
+  return (
+    <select
+      {...props}
+      className={`h-9 w-full rounded-xl border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none focus:border-emerald-400 ${props.className || ""}`}
+    />
+  );
+}
 
-  const defaultMediaQuery = useMemo(() => {
-    return String(
-      safeSelected.mediaQuery ||
-        safeSelected.label ||
-        safeSelected.alt ||
-        safeSelected.text ||
-        safeSelected.mediaType ||
-        "premium realistic photography"
-    ).slice(0, 80);
-  }, [safeSelected.mediaQuery, safeSelected.label, safeSelected.alt, safeSelected.text, safeSelected.mediaType]);
+function Button({ children, variant = "default", className = "", ...props }) {
+  const variants = {
+    default: "border-zinc-700 bg-zinc-900 text-zinc-100 hover:border-emerald-400",
+    primary: "border-emerald-500 bg-emerald-500 text-black hover:bg-emerald-400",
+    danger: "border-red-500/40 bg-red-500/10 text-red-200 hover:border-red-400",
+    ghost: "border-zinc-800 bg-black text-zinc-300 hover:border-zinc-600",
+  };
 
-  const [pexelsQuery, setPexelsQuery] = useState(defaultMediaQuery);
-  const [pexelsType, setPexelsType] = useState(safeSelected.mediaType === "video" ? "video" : "photo");
-  const [pexelsLoading, setPexelsLoading] = useState(false);
-  const [pexelsResults, setPexelsResults] = useState([]);
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`h-9 rounded-xl border px-3 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${variants[variant]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
 
-  useEffect(() => {
-    setPexelsQuery(defaultMediaQuery);
-    setPexelsType(safeSelected.mediaType === "video" ? "video" : "photo");
-    setPexelsResults([]);
-  }, [safeSelected.id, safeSelected.mediaType, defaultMediaQuery]);
+export default function InspectorPanel({ selected, onUpdate, editing, onClose }) {
+  const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const [notice, setNotice] = useState("");
+
+  const styles = selected?.styles || {};
+  const classes = selected?.classes || "";
+  const hasSelection = Boolean(selected?.id);
+  const isMedia = selected?.mediaUrl !== undefined && selected?.mediaUrl !== null;
+  const isText = selected?.text !== undefined && selected?.text !== null;
+
+  const selectedLabel = useMemo(() => {
+    if (!selected) return "No element selected";
+    return selected.tag || selected.id || "Selected element";
+  }, [selected]);
+
+  function notify(message) {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 1800);
+  }
+
+  function updatePatch(patch) {
+    if (!selected?.id || !onUpdate) return;
+    onUpdate(selected.id, patch);
+  }
+
+  function updateStyle(key, value) {
+    updatePatch({ styles: { [key]: value } });
+  }
+
+  function updateStyles(nextStyles) {
+    updatePatch({ styles: nextStyles });
+  }
+
+  function copyText() {
+    if (!selected) return;
+    writeClipboard({ type: "text", text: selected.text || "" });
+    notify("Text copied");
+  }
+
+  function pasteText() {
+    const clip = readClipboard();
+    if (!clip?.text && clip?.type !== "text" && clip?.type !== "element") return notify("No copied text");
+    updatePatch({ text: clip.text || "" });
+    notify("Text pasted");
+  }
+
+  function copyStyle() {
+    if (!selected) return;
+    writeClipboard({ type: "style", styles: selected.styles || {}, classes: selected.classes || "" });
+    notify("Style copied");
+  }
+
+  function pasteStyle() {
+    const clip = readClipboard();
+    if (!clip?.styles && clip?.type !== "style" && clip?.type !== "element") return notify("No copied style");
+    updatePatch({ styles: clip.styles || {}, classes: clip.classes || "" });
+    notify("Style pasted");
+  }
+
+  function copyFullElement() {
+    if (!selected) return;
+    writeClipboard({
+      type: "element",
+      text: selected.text || "",
+      mediaUrl: selected.mediaUrl || "",
+      mediaType: selected.mediaType || "",
+      styles: selected.styles || {},
+      classes: selected.classes || "",
+    });
+    notify("Full element copied");
+  }
+
+  function pasteFullElement() {
+    const clip = readClipboard();
+    if (!clip) return notify("Nothing copied");
+
+    const patch = {
+      styles: clip.styles || {},
+      classes: clip.classes || "",
+    };
+
+    if (isText && typeof clip.text === "string") patch.text = clip.text;
+    if (isMedia && typeof clip.mediaUrl === "string") patch.mediaUrl = clip.mediaUrl;
+
+    updatePatch(patch);
+    notify("Full element pasted");
+  }
+
+  async function pasteUrlFromClipboard() {
+    try {
+      const value = await navigator.clipboard.readText();
+      if (!value) return;
+      updatePatch({ mediaUrl: value.trim() });
+      notify("URL pasted");
+    } catch {
+      window.alert("Clipboard access blocked. Paste the URL manually.");
+    }
+  }
+
+  function handleFileUpload(event, type) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      updatePatch({ mediaUrl: String(reader.result || "") });
+      notify(type === "video" ? "Video uploaded" : "Image uploaded");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeMedia() {
+    updatePatch({ mediaUrl: "" });
+    notify("Media removed");
+  }
+
+  function resetControlledStyles() {
+    const empty = {};
+    CONTROLLED_STYLE_KEYS.forEach((key) => {
+      empty[key] = "";
+    });
+    updatePatch({ styles: empty, classes: "" });
+    notify("Styles reset");
+  }
 
   if (!editing) {
     return (
-      <div className="p-4 text-sm text-zinc-500">
-        Enable <span className="font-semibold text-zinc-300">Edit</span> to inspect elements.
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-400">
+        Enable Edit mode to use the visual inspector.
       </div>
     );
   }
 
-  if (!selected) {
+  if (!hasSelection) {
     return (
-      <div className="p-4 text-sm text-zinc-500">
-        Click any element in the preview to edit it.
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-400">
+        Click an element in the preview to edit text, media and styles.
       </div>
     );
   }
-
-  const patchText = (text) => onUpdate(selected.id, { text });
-  const patchMediaUrl = (mediaUrl) => onUpdate(selected.id, { mediaUrl });
-
-  const searchPexels = async () => {
-    const q = String(pexelsQuery || defaultMediaQuery || "").trim();
-    if (!q) return;
-
-    setPexelsLoading(true);
-    try {
-      const data = await searchPexelsMedia({
-        q,
-        type: pexelsType,
-        per_page: 18,
-      });
-      setPexelsResults(Array.isArray(data.items) ? data.items : []);
-    } catch (error) {
-      window.alert(error?.response?.data?.detail || error?.message || "Pexels search failed");
-    } finally {
-      setPexelsLoading(false);
-    }
-  };
-  const patchClasses = (classes) => onUpdate(selected.id, { classes });
-  const deleteElement = () => onUpdate(selected.id, { delete: true });
-  const normalizeCssValue = (key, value) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) return "";
-
-    const pxKeys = new Set([
-      "width",
-      "height",
-      "minHeight",
-      "maxWidth",
-      "padding",
-      "margin",
-      "borderRadius",
-      "gap",
-      "fontSize",
-      "letterSpacing",
-    ]);
-
-    if (pxKeys.has(key) && /^-?\\d+(\\.\\d+)?$/.test(raw)) {
-      return `${raw}px`;
-    }
-
-    return raw;
-  };
-
-  const patchStyle = (key, value) => {
-    const layoutKeys = new Set([
-      "width",
-      "height",
-      "minHeight",
-      "maxWidth",
-      "padding",
-      "margin",
-      "borderRadius",
-      "gap",
-      "gridTemplateColumns",
-    ]);
-
-    const normalized = normalizeCssValue(key, value);
-    const styles = { [key]: normalized };
-
-    if (layoutKeys.has(key) && !selected.styles?.display) {
-      styles.display = "inline-block";
-    }
-
-    onUpdate(selected.id, { styles });
-  };
-
-  const inputClass = "h-8 border-zinc-800 bg-zinc-900 text-xs text-zinc-100";
-  const areaClass = "min-h-[72px] border-zinc-800 bg-zinc-900 text-xs text-zinc-100";
 
   return (
-    <div className="space-y-3 p-3 text-zinc-100">
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-        <div className="text-xs font-bold text-emerald-300">Selected</div>
-        <div className="mt-1 truncate text-xs text-zinc-400">{selected.tag || "element"}</div>
-        <div className="mt-1 truncate text-[11px] text-zinc-500">{selected.id}</div>
-        <div className="mt-2 text-[11px] text-zinc-500">Auto-save enabled</div>
+    <div className="space-y-3 text-zinc-100">
+      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-300">Edit Menu</div>
+            <div className="mt-1 break-all text-sm font-black text-white">{selectedLabel}</div>
+            <div className="mt-1 break-all text-[11px] text-zinc-400">{selected.id}</div>
+          </div>
+          {onClose ? (
+            <Button variant="ghost" className="h-8 px-2" onClick={onClose}>
+              Close
+            </Button>
+          ) : null}
+        </div>
+        {notice ? <div className="mt-2 text-xs font-bold text-emerald-200">{notice}</div> : null}
       </div>
 
-      {String(selected.id || "").startsWith("customElements.") ? (
-        <button
-          type="button"
-          onClick={deleteElement}
-          className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20"
-        >
-          Delete selected custom text
-        </button>
-      ) : null}
+      <Section title="Phase 1 — Clipboard" defaultOpen>
+        <div className="grid grid-cols-2 gap-2">
+          <Button onClick={copyText} disabled={!isText}>Copy Text</Button>
+          <Button onClick={pasteText} disabled={!isText}>Paste Text</Button>
+          <Button onClick={copyStyle}>Copy Style</Button>
+          <Button onClick={pasteStyle}>Paste Style</Button>
+          <Button onClick={copyFullElement}>Copy Full</Button>
+          <Button onClick={pasteFullElement}>Paste Full</Button>
+        </div>
+      </Section>
 
-
-      {selected.text !== undefined && selected.text !== null ? (
-        <Section icon={Type} title="Text">
-          <Textarea
-            value={selected.text || ""}
-            onChange={(e) => patchText(e.target.value)}
-            className={areaClass}
-            placeholder="Element text..."
-          />
-        </Section>
-      ) : null}
-
-      {selected.mediaUrl !== undefined && selected.mediaUrl !== null ? (
-        <Section icon={Image} title="Media">
-          <Field label={selected.mediaType === "video" ? "Video URL" : "Image URL"}>
-            <Input
-              value={selected.mediaUrl || ""}
-              onChange={(e) => patchMediaUrl(e.target.value)}
-              className={inputClass}
-              placeholder="https://..."
+      {isText ? (
+        <Section title="Text Content" defaultOpen>
+          <Field label="Selected text">
+            <textarea
+              value={selected.text || ""}
+              onChange={(event) => updatePatch({ text: event.target.value })}
+              className="min-h-24 w-full rounded-xl border border-zinc-800 bg-black px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-400"
             />
           </Field>
-
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) patchMediaUrl(text.trim());
-                } catch {
-                  window.alert("Clipboard access blocked. Paste the URL manually.");
-                }
-              }}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 text-[11px] font-bold text-zinc-200 hover:bg-zinc-800"
-            >
-              Paste URL
-            </button>
-            <button
-              type="button"
-              onClick={() => selected.mediaUrl && window.open(selected.mediaUrl, "_blank")}
-              disabled={!selected.mediaUrl}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 text-[11px] font-bold text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Open
-            </button>
-            <button
-              type="button"
-              onClick={() => patchMediaUrl("")}
-              className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-2 text-[11px] font-bold text-red-300 hover:bg-red-500/20"
-            >
-              Clear
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-zinc-800 bg-black/30 p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">
-                Pexels Picker
-              </div>
-              <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setPexelsType("photo")}
-                  className={`rounded-md px-2 py-1 text-[10px] font-bold ${pexelsType === "photo" ? "bg-white text-black" : "text-zinc-500 hover:text-white"}`}
-                >
-                  Photos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPexelsType("video")}
-                  className={`rounded-md px-2 py-1 text-[10px] font-bold ${pexelsType === "video" ? "bg-white text-black" : "text-zinc-500 hover:text-white"}`}
-                >
-                  Videos
-                </button>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Input
-                value={pexelsQuery}
-                onChange={(e) => setPexelsQuery(e.target.value)}
-                className={inputClass}
-                placeholder="Search Pexels..."
-              />
-              <button
-                type="button"
-                onClick={searchPexels}
-                disabled={pexelsLoading}
-                className="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-bold text-black hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {pexelsLoading ? "..." : "Search"}
-              </button>
-            </div>
-
-            {pexelsResults.length ? (
-              <div className="mt-3 grid max-h-72 grid-cols-2 gap-2 overflow-auto pr-1">
-                {pexelsResults.map((item) => (
-                  <button
-                    key={`${item.type}-${item.id}`}
-                    type="button"
-                    onClick={() => patchMediaUrl(item.url)}
-                    className="group overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 text-left hover:border-cyan-400/60"
-                    title={item.alt || item.credit}
-                  >
-                    {item.preview ? (
-                      <img src={item.preview} alt={item.alt || ""} className="h-20 w-full object-cover transition group-hover:scale-105" />
-                    ) : (
-                      <div className="flex h-20 items-center justify-center text-xs text-zinc-500">No preview</div>
-                    )}
-                    <div className="truncate px-2 py-1 text-[10px] text-zinc-500">
-                      {item.type} • {item.credit || "Pexels"}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-3 rounded-lg border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-500">
-                Search Pexels and click a result to replace the selected media.
-              </div>
-            )}
-          </div>
-
-          {selected.mediaUrl ? (
-            <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-              {selected.mediaType === "video" ? (
-                <video src={selected.mediaUrl} className="max-h-36 w-full object-cover" muted loop playsInline />
-              ) : (
-                <img src={selected.mediaUrl} alt="" className="max-h-36 w-full object-cover" />
-              )}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/60 p-4 text-center text-xs text-zinc-500">
-              Pick from Pexels or paste an image/video URL.
-            </div>
-          )}
         </Section>
       ) : null}
 
-      <Section icon={Box} title="Layout">
-        <Row>
-          <Field label="Width">
-            <Input value={styles.width || ""} onChange={(e) => patchStyle("width", e.target.value)} className={inputClass} placeholder="320px / 100%" />
+      {isMedia ? (
+        <Section title="Phase 5 — Media" defaultOpen>
+          <Field label="Media URL">
+            <Input value={selected.mediaUrl || ""} onChange={(event) => updatePatch({ mediaUrl: event.target.value })} />
           </Field>
-          <Field label="Height">
-            <Input value={styles.height || ""} onChange={(e) => patchStyle("height", e.target.value)} className={inputClass} placeholder="120px / auto" />
-          </Field>
-        </Row>
 
-        <Row>
-          <Field label="Min height">
-            <Input value={styles.minHeight || ""} onChange={(e) => patchStyle("minHeight", e.target.value)} className={inputClass} placeholder="400px" />
-          </Field>
-          <Field label="Max width">
-            <Input value={styles.maxWidth || ""} onChange={(e) => patchStyle("maxWidth", e.target.value)} className={inputClass} placeholder="900px" />
-          </Field>
-        </Row>
+          <div className="grid grid-cols-2 gap-2">
+            <Button onClick={() => imageInputRef.current?.click()}>Upload Image</Button>
+            <Button onClick={() => videoInputRef.current?.click()}>Upload Video</Button>
+            <Button onClick={pasteUrlFromClipboard}>Paste URL</Button>
+            <Button variant="danger" onClick={removeMedia}>Remove Media</Button>
+          </div>
 
-        <Row>
-          <Field label="Padding">
-            <Input value={styles.padding || ""} onChange={(e) => patchStyle("padding", e.target.value)} className={inputClass} placeholder="24px" />
-          </Field>
-          <Field label="Margin">
-            <Input value={styles.margin || ""} onChange={(e) => patchStyle("margin", e.target.value)} className={inputClass} placeholder="0 auto" />
-          </Field>
-        </Row>
+          <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => handleFileUpload(event, "image")} />
+          <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={(event) => handleFileUpload(event, "video")} />
 
-        <Row>
-          <Field label="Gap">
-            <Input value={styles.gap || ""} onChange={(e) => patchStyle("gap", e.target.value)} className={inputClass} placeholder="18px" />
-          </Field>
-          <Field label="Display">
-            <Input value={styles.display || ""} onChange={(e) => patchStyle("display", e.target.value)} className={inputClass} placeholder="block / flex / grid" />
-          </Field>
-        </Row>
+          {selected.mediaUrl ? (
+            <div className="overflow-hidden rounded-xl border border-zinc-800 bg-black">
+              {selected.mediaType === "video" || String(selected.mediaUrl).startsWith("data:video") ? (
+                <video src={selected.mediaUrl} className="max-h-40 w-full object-cover" muted loop playsInline controls />
+              ) : (
+                <img src={selected.mediaUrl} alt="" className="max-h-40 w-full object-cover" />
+              )}
+            </div>
+          ) : null}
+        </Section>
+      ) : null}
 
-        <Row>
-          <Field label="Justify">
-            <Input value={styles.justifyContent || ""} onChange={(e) => patchStyle("justifyContent", e.target.value)} className={inputClass} placeholder="center / space-between" />
-          </Field>
-          <Field label="Align">
-            <Input value={styles.alignItems || ""} onChange={(e) => patchStyle("alignItems", e.target.value)} className={inputClass} placeholder="center / stretch" />
-          </Field>
-        </Row>
+      <Section title="Phase 2 — Typography" defaultOpen>
+        <Field label="Font family">
+          <Select value={styles.fontFamily || ""} onChange={(event) => updateStyle("fontFamily", event.target.value)}>
+            {FONT_FAMILIES.map((font) => (
+              <option key={font.label} value={font.value}>{font.label}</option>
+            ))}
+          </Select>
+        </Field>
 
-        <Field label="Grid columns">
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Font size">
+            <Input placeholder="48px" value={styles.fontSize || ""} onChange={(event) => updateStyle("fontSize", event.target.value)} />
+          </Field>
+          <Field label="Weight">
+            <Select value={styles.fontWeight || ""} onChange={(event) => updateStyle("fontWeight", event.target.value)}>
+              <option value="">Default</option>
+              <option value="300">Light</option>
+              <option value="400">Regular</option>
+              <option value="500">Medium</option>
+              <option value="700">Bold</option>
+              <option value="800">Extra Bold</option>
+              <option value="900">Black</option>
+            </Select>
+          </Field>
+          <Field label="Letter spacing">
+            <Input placeholder="-0.04em" value={styles.letterSpacing || ""} onChange={(event) => updateStyle("letterSpacing", event.target.value)} />
+          </Field>
+          <Field label="Line height">
+            <Input placeholder="1.1" value={styles.lineHeight || ""} onChange={(event) => updateStyle("lineHeight", event.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Text align">
+          <div className="grid grid-cols-4 gap-2">
+            {["left", "center", "right", "justify"].map((align) => (
+              <Button
+                key={align}
+                variant={styles.textAlign === align ? "primary" : "default"}
+                onClick={() => updateStyle("textAlign", align)}
+              >
+                {align}
+              </Button>
+            ))}
+          </div>
+        </Field>
+      </Section>
+
+      <Section title="Phase 3 — Colors" defaultOpen>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Text color">
+            <Input type="color" value={styles.color || "#ffffff"} onChange={(event) => updateStyle("color", event.target.value)} />
+          </Field>
+          <Field label="Background">
+            <Input type="color" value={styles.backgroundColor || "#000000"} onChange={(event) => updateStyle("backgroundColor", event.target.value)} />
+          </Field>
+          <Field label="Border color">
+            <Input type="color" value={styles.borderColor || "#10b981"} onChange={(event) => updateStyles({ borderColor: event.target.value, border: `1px solid ${event.target.value}` })} />
+          </Field>
+          <Field label="Opacity">
+            <Input type="number" min="0" max="1" step="0.05" value={styles.opacity || ""} placeholder="1" onChange={(event) => updateStyle("opacity", event.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Gradient background">
           <Input
-            value={styles.gridTemplateColumns || ""}
-            onChange={(e) => patchStyle("gridTemplateColumns", e.target.value)}
-            className={inputClass}
-            placeholder="repeat(3, minmax(0, 1fr))"
+            placeholder="linear-gradient(135deg, #111827, #10b981)"
+            value={styles.background || ""}
+            onChange={(event) => updateStyle("background", event.target.value)}
           />
         </Field>
       </Section>
 
-      <Section icon={Type} title="Typography">
-        <Row>
-          <Field label="Font size">
-            <Input value={styles.fontSize || ""} onChange={(e) => patchStyle("fontSize", e.target.value)} className={inputClass} placeholder="32px" />
+      <Section title="Phase 4 — Layout" defaultOpen>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Padding">
+            <Input placeholder="24px" value={styles.padding || ""} onChange={(event) => updateStyle("padding", event.target.value)} />
           </Field>
-          <Field label="Weight">
-            <Input value={styles.fontWeight || ""} onChange={(e) => patchStyle("fontWeight", e.target.value)} className={inputClass} placeholder="700" />
+          <Field label="Margin">
+            <Input placeholder="12px" value={styles.margin || ""} onChange={(event) => updateStyle("margin", event.target.value)} />
           </Field>
-        </Row>
-
-        <Row>
-          <Field label="Line height">
-            <Input value={styles.lineHeight || ""} onChange={(e) => patchStyle("lineHeight", e.target.value)} className={inputClass} placeholder="1.1" />
+          <Field label="Width">
+            <Input placeholder="420px / 100%" value={styles.width || ""} onChange={(event) => updateStyle("width", event.target.value)} />
           </Field>
-          <Field label="Letter spacing">
-            <Input value={styles.letterSpacing || ""} onChange={(e) => patchStyle("letterSpacing", e.target.value)} className={inputClass} placeholder="-0.04em" />
+          <Field label="Height">
+            <Input placeholder="260px" value={styles.height || ""} onChange={(event) => updateStyle("height", event.target.value)} />
           </Field>
-        </Row>
-
-        <Field label="Text color">
-          <Input value={styles.color || ""} onChange={(e) => patchStyle("color", e.target.value)} className={inputClass} placeholder="#ffffff" />
-        </Field>
-      </Section>
-
-      <Section icon={SlidersHorizontal} title="Visual">
-        <Row>
-          <Field label="Background">
-            <Input value={styles.background || ""} onChange={(e) => patchStyle("background", e.target.value)} className={inputClass} placeholder="rgba(...) / #111" />
+          <Field label="Min height">
+            <Input placeholder="320px" value={styles.minHeight || ""} onChange={(event) => updateStyle("minHeight", event.target.value)} />
+          </Field>
+          <Field label="Max width">
+            <Input placeholder="760px" value={styles.maxWidth || ""} onChange={(event) => updateStyle("maxWidth", event.target.value)} />
           </Field>
           <Field label="Radius">
-            <Input value={styles.borderRadius || ""} onChange={(e) => patchStyle("borderRadius", e.target.value)} className={inputClass} placeholder="24px" />
+            <Input placeholder="24px" value={styles.borderRadius || ""} onChange={(event) => updateStyle("borderRadius", event.target.value)} />
           </Field>
-        </Row>
-
-        <Row>
-          <Field label="Border">
-            <Input value={styles.border || ""} onChange={(e) => patchStyle("border", e.target.value)} className={inputClass} placeholder="1px solid ..." />
+          <Field label="Object fit">
+            <Select value={styles.objectFit || ""} onChange={(event) => updateStyle("objectFit", event.target.value)}>
+              <option value="">Default</option>
+              <option value="cover">Cover</option>
+              <option value="contain">Contain</option>
+              <option value="fill">Fill</option>
+            </Select>
           </Field>
-          <Field label="Opacity">
-            <Input value={styles.opacity || ""} onChange={(e) => patchStyle("opacity", e.target.value)} className={inputClass} placeholder="0.8" />
-          </Field>
-        </Row>
+        </div>
 
         <Field label="Shadow">
-          <Input value={styles.boxShadow || ""} onChange={(e) => patchStyle("boxShadow", e.target.value)} className={inputClass} placeholder="0 20px 80px rgba(...)" />
-        </Field>
-
-        <Row>
-          <Field label="Scale">
-            <Input value={styles.transform || ""} onChange={(e) => patchStyle("transform", e.target.value)} className={inputClass} placeholder="scale(1.05)" />
-          </Field>
-          <Field label="Z index">
-            <Input value={styles.zIndex || ""} onChange={(e) => patchStyle("zIndex", e.target.value)} className={inputClass} placeholder="10" />
-          </Field>
-        </Row>
-
-        <Field label="Extra classes">
-          <Input value={selected.classes || ""} onChange={(e) => patchClasses(e.target.value)} className={inputClass} placeholder="custom-class" />
+          <Select value={styles.boxShadow || ""} onChange={(event) => updateStyle("boxShadow", event.target.value)}>
+            <option value="">Default</option>
+            {SHADOWS.map((shadow) => (
+              <option key={shadow.label} value={shadow.value}>{shadow.label}</option>
+            ))}
+          </Select>
         </Field>
       </Section>
+
+      <Section title="Advanced classes" defaultOpen={false}>
+        <Field label="CSS classes">
+          <Input value={classes} onChange={(event) => updatePatch({ classes: event.target.value })} placeholder="custom-class another-class" />
+        </Field>
+      </Section>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="danger" onClick={resetControlledStyles}>Reset Style</Button>
+        <Button variant="ghost" onClick={() => updatePatch({ delete: true })}>Delete</Button>
+      </div>
     </div>
   );
 }

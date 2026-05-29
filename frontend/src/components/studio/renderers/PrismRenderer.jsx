@@ -109,7 +109,15 @@ export default function PremiumWebsiteRenderer({
   const customElements = list(state.customElements, []);
 
   function overrideClass(id) { return text(overrides[id]?.classes, ""); }
-  function overrideStyle(id) { return overrides[id]?.styles || {}; }
+  function overrideStyle(id) { return overrides[id]?.styles || {}
+
+  function overrideText(id, fallback = "") {
+    return overrides[id]?.text ?? fallback;
+  }
+
+  function overrideMediaUrl(id, fallback = "") {
+    return overrides[id]?.mediaUrl ?? fallback;
+  }; }
   function dataId(id) { return String(id || "").replace(/"/g, "&quot;"); }
 
   function cssValue(key, value) {
@@ -153,7 +161,7 @@ export default function PremiumWebsiteRenderer({
       style: { ...(extra.style || {}) },
       onClick: editing ? (event) => {
         event.stopPropagation();
-        onSelect?.({ id, tag, text: value, styles: overrideStyle(id), classes: overrideClass(id), reactPath: id });
+        onSelect?.({ id, tag, text: overrideText(id, value), styles: overrideStyle(id), classes: overrideClass(id), reactPath: id });
       } : extra.onClick,
     };
   }
@@ -165,7 +173,7 @@ export default function PremiumWebsiteRenderer({
       style: { ...(extra.style || {}) },
       onClick: editing ? (event) => {
         event.stopPropagation();
-        onSelect?.({ id, tag: mediaType === "video" ? "video" : "image", text: undefined, mediaUrl: mediaUrl || "", mediaType, styles: overrideStyle(id), classes: overrideClass(id), reactPath: id });
+        onSelect?.({ id, tag: mediaType === "video" ? "video" : "image", text: undefined, mediaUrl: overrideMediaUrl(id, mediaUrl || ""), mediaType, styles: overrideStyle(id), classes: overrideClass(id), reactPath: id });
       } : extra.onClick,
     };
   }

@@ -76,7 +76,15 @@ export default function NexoraRenderer({
   }
 
   function overrideStyle(id) {
-    return overrides[id]?.styles || {};
+    return overrides[id]?.styles || {}
+
+  function overrideText(id, fallback = "") {
+    return overrides[id]?.text ?? fallback;
+  }
+
+  function overrideMediaUrl(id, fallback = "") {
+    return overrides[id]?.mediaUrl ?? fallback;
+  };
   }
 
   function editable(id, tag, value, extra = {}) {
@@ -93,7 +101,7 @@ export default function NexoraRenderer({
             onSelect?.({
               id,
               tag,
-              text: value,
+              text: overrideText(id, value),
               styles: overrideStyle(id),
               classes: overrideClass(id),
               reactPath: id,

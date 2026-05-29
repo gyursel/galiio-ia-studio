@@ -511,35 +511,46 @@ const handleInspectorUpdate = (id, patch) => {
         }
       }
 
-      if (patch?.styles && typeof patch.styles === "object") {
-        const currentOverrides = nextProjectState.overrides || {};
-        const currentElement = currentOverrides[id] || {};
-        nextProjectState = {
-          ...nextProjectState,
-          overrides: {
-            ...currentOverrides,
-            [id]: {
-              ...currentElement,
-              styles: {
-                ...(currentElement.styles || {}),
-                ...patch.styles,
-              },
-            },
-          },
-        };
-      }
+      const hasOverridePatch =
+        (patch?.styles && typeof patch.styles === "object") ||
+        typeof patch?.classes === "string" ||
+        typeof patch?.text === "string" ||
+        typeof patch?.mediaUrl === "string" ||
+        typeof patch?.mediaType === "string";
 
-      if (typeof patch?.classes === "string") {
+      if (hasOverridePatch) {
         const currentOverrides = nextProjectState.overrides || {};
         const currentElement = currentOverrides[id] || {};
+        const nextElement = { ...currentElement };
+
+        if (patch?.styles && typeof patch.styles === "object") {
+          nextElement.styles = {
+            ...(currentElement.styles || {}),
+            ...patch.styles,
+          };
+        }
+
+        if (typeof patch?.classes === "string") {
+          nextElement.classes = patch.classes;
+        }
+
+        if (typeof patch?.text === "string") {
+          nextElement.text = patch.text;
+        }
+
+        if (typeof patch?.mediaUrl === "string") {
+          nextElement.mediaUrl = patch.mediaUrl;
+        }
+
+        if (typeof patch?.mediaType === "string") {
+          nextElement.mediaType = patch.mediaType;
+        }
+
         nextProjectState = {
           ...nextProjectState,
           overrides: {
             ...currentOverrides,
-            [id]: {
-              ...currentElement,
-              classes: patch.classes,
-            },
+            [id]: nextElement,
           },
         };
       }
