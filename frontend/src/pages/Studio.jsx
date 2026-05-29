@@ -131,14 +131,16 @@ export default function Studio() {
     return clone;
   };
 
-  const saveProjectStatePatch = async (nextProjectState) => {
+  const saveProjectStatePatch = async (nextProjectState, pageSnapshot) => {
+    // pageSnapshot is passed explicitly to avoid stale-closure reads of activePage.
+    const snap = pageSnapshot || activePage;
     try {
       await updatePage(projectId, activePath, {
-        html: activePage?.html || "",
-        css: activePage?.css || "",
-        js: activePage?.js || "",
+        html: snap?.html || "",
+        css: snap?.css || "",
+        js: snap?.js || "",
         projectState: nextProjectState,
-        generatedFiles: activePage?.generatedFiles || [],
+        generatedFiles: snap?.generatedFiles || [],
       });
     } catch {
       toast.error("React edit save failed");
@@ -566,7 +568,9 @@ const handleInspectorUpdate = (id, patch) => {
         };
       });
 
-      saveProjectStatePatch(nextProjectState);
+      saveProjectStatePatch(nextProjectState, activePage);
+      // Forward patch to iframe so ProjectPreview re-renders immediately
+      previewRef.current?.update(id, patch);
       if (patch?.delete !== true) {
         setSelected((s) =>
           s
@@ -783,6 +787,8 @@ const handleInspectorUpdate = (id, patch) => {
           css={activePage?.css}
           js={activePage?.js}
           projectState={activePage?.projectState}
+          projectId={projectId}
+          activePath={activePath}
           selectedId={selected?.id}
           device={device}
           generating={generating}

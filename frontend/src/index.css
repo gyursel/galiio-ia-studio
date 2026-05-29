@@ -147,3 +147,13 @@ pre,
         display: contents !important;
     }
 }
+
+/* Universal mobile-safe reset for all renderers */
+.canvas-grid * {
+  box-sizing: border-box;
+}
+.canvas-grid img,
+.canvas-grid video,
+.canvas-grid iframe {
+  max-width: 100%;
+}

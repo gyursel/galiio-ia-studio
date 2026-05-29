@@ -145,6 +145,9 @@ export const EDITOR_INJECT_SCRIPT = `
 
   // Auto-tag on first load
   tagAll();
+
+  // Signal parent that the editor script is ready
+  window.parent.postMessage({ type: 'galio:ready' }, '*');
 })();
 `;
 

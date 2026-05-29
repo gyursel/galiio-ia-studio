@@ -660,7 +660,7 @@ Return ONLY a single JSON object with these keys (no markdown fences, no comment
 }
 
 HARD RULES:
-1. HTML must be a COMPLETE valid document starting with <!DOCTYPE html>, include <head> with <script src=\"https://cdn.tailwindcss.com\"></script> and a viewport meta.
+1. HTML must be a COMPLETE valid document starting with <!DOCTYPE html>, include <head> with <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> and <script src=\"https://cdn.tailwindcss.com\"></script>.
 2. Inline custom CSS in a <style> tag in <head> AND duplicate it in "css".
 3. Inline JS in a <script> tag at end of <body> AND duplicate it in "js".
 4. Modern, premium design — ample whitespace, beautiful typography (Google Fonts via <link>), proper sections (hero, features, etc.), responsive mobile-first.
@@ -676,6 +676,8 @@ MODES:
 - "refine"/"debug": Modify the CURRENT page (provided in user message). Return the FULL updated html/css/js (never partial diffs).
 
 If a PAGE_PATH other than "/" is provided, build that specific page (e.g. /about, /contact) consistent with the rest of the site if context is given.
+
+10. ALWAYS include this CSS in every <style> tag: html,body{width:100%;max-width:100%;overflow-x:hidden}*,*::before,*::after{box-sizing:border-box}img,video,iframe{max-width:100%}
 
 Return JSON ONLY."""
 

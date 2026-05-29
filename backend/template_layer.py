@@ -11,7 +11,7 @@ Important:
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import re
 
 
@@ -124,27 +124,59 @@ TEMPLATE_PRESETS: List[TemplatePreset] = [
     ),
 ]
 
+# Indexed for O(1) lookup by id — built once at import time.
+_PRESET_BY_ID: Dict[str, TemplatePreset] = {p.id: p for p in TEMPLATE_PRESETS}
+
+_THUMBNAILS: List[str] = [
+    "https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=900",
+    "https://images.unsplash.com/photo-1551434678-e076c223a692?w=900",
+    "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=900",
+    "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=900",
+    "https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=900",
+    "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=900",
+    "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=900",
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900",
+    "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=900",
+    "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=900",
+    "https://images.unsplash.com/photo-1556761175-b413da4baf72?w=900",
+    "https://images.unsplash.com/photo-1495020689067-958852a7765e?w=900",
+]
+
+# Compiled once — used inside choose_template
+_TEMPLATE_ID_RE = re.compile(r"template\s*id\s*[:=]?\s*([a-z0-9-]+)", re.IGNORECASE)
+
+
+def _score_preset(preset: TemplatePreset, text: str) -> int:
+    """Return a relevance score for *preset* against the lower-cased *text*.
+
+    Scoring rules:
+    - +3 for every exact keyword match in ``best_for``
+    - +1 for every word segment of the template id found in the text
+    - Multi-word ``best_for`` phrases are matched as whole substrings so
+      "real estate" doesn't accidentally score on "real" alone.
+    """
+    score = 0
+    for keyword in preset.best_for:
+        # Use word-boundary anchors only for single-word keywords to avoid
+        # false positives like "shop" matching "workshop".
+        if " " in keyword:
+            if keyword in text:
+                score += 3
+        else:
+            if re.search(rf"\b{re.escape(keyword)}\b", text):
+                score += 3
+    for part in preset.id.split("-"):
+        if part and re.search(rf"\b{re.escape(part)}\b", text):
+            score += 1
+    return score
+
 
 def list_template_presets() -> List[Dict[str, Any]]:
-    thumbnails = [
-        "https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=900",
-        "https://images.unsplash.com/photo-1551434678-e076c223a692?w=900",
-        "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=900",
-        "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=900",
-        "https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=900",
-        "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=900",
-        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=900",
-        "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900",
-        "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=900",
-        "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=900",
-        "https://images.unsplash.com/photo-1556761175-b413da4baf72?w=900",
-        "https://images.unsplash.com/photo-1495020689067-958852a7765e?w=900",
-    ]
-
+    """Return all template presets enriched with thumbnail and demo prompt."""
     items = []
     for index, preset in enumerate(TEMPLATE_PRESETS):
         item = asdict(preset)
-        item["thumbnail"] = thumbnails[index % len(thumbnails)]
+        item["thumbnail"] = _THUMBNAILS[index % len(_THUMBNAILS)]
         item["prompt"] = (
             f"Create a premium one-page website for {preset.name} Demo. "
             f"Use the template id {preset.id}. "
@@ -155,31 +187,46 @@ def list_template_presets() -> List[Dict[str, Any]]:
     return items
 
 
-def choose_template(prompt: str = "", subject: str = "", requested_template_id: str | None = None) -> Dict[str, Any]:
+def get_preset_by_id(template_id: str) -> Optional[TemplatePreset]:
+    """Return the :class:`TemplatePreset` matching *template_id*, or ``None``."""
+    return _PRESET_BY_ID.get(template_id)
+
+
+def choose_template(
+    prompt: str = "",
+    subject: str = "",
+    requested_template_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Select the best-matching template preset and return it as a plain dict.
+
+    Resolution order:
+    1. ``requested_template_id`` argument (caller's explicit choice).
+    2. Template id embedded in the combined prompt/subject text
+       (e.g. "template id: saas-product").
+    3. Keyword scoring against all presets; falls back to the first preset
+       when no keywords match.
+    """
     text = f"{prompt} {subject}".lower().strip()
 
-    explicit_template_id = ""
-    match = re.search(r"template\s*id\s*[:=]?\s*([a-z0-9-]+)", text, re.I)
+    # 1. Explicit argument takes highest priority.
+    if requested_template_id:
+        preset = get_preset_by_id(requested_template_id)
+        if preset:
+            return asdict(preset)
+        # Unknown id — fall through to scoring rather than silently failing.
+
+    # 2. Id embedded in the text.
+    match = _TEMPLATE_ID_RE.search(text)
     if match:
-        explicit_template_id = match.group(1).strip()
+        preset = get_preset_by_id(match.group(1).strip())
+        if preset:
+            return asdict(preset)
 
-    selected_id = requested_template_id or explicit_template_id
-    if selected_id:
-        for preset in TEMPLATE_PRESETS:
-            if preset.id == selected_id:
-                return asdict(preset)
-
+    # 3. Keyword scoring.
     best = TEMPLATE_PRESETS[0]
     best_score = 0
-
     for preset in TEMPLATE_PRESETS:
-        score = 0
-        for keyword in preset.best_for:
-            if keyword.lower() in text:
-                score += 3
-        for part in preset.id.split("-"):
-            if part and part in text:
-                score += 1
+        score = _score_preset(preset, text)
         if score > best_score:
             best = preset
             best_score = score
@@ -187,8 +234,17 @@ def choose_template(prompt: str = "", subject: str = "", requested_template_id: 
     return asdict(best)
 
 
-def build_template_context(prompt: str = "", subject: str = "", requested_template_id: str | None = None) -> Dict[str, Any]:
-    selected = choose_template(prompt=prompt, subject=subject, requested_template_id=requested_template_id)
+def build_template_context(
+    prompt: str = "",
+    subject: str = "",
+    requested_template_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build the full template context dict consumed by the generation agent."""
+    selected = choose_template(
+        prompt=prompt,
+        subject=subject,
+        requested_template_id=requested_template_id,
+    )
 
     return {
         "templateId": selected["id"],
@@ -197,5 +253,9 @@ def build_template_context(prompt: str = "", subject: str = "", requested_templa
         "templateSections": selected["sections"],
         "templateVisualStyle": selected["visual_style"],
         "availableTemplates": list_template_presets(),
-        "rule": "Template controls only layout structure. Subject, text, media and brand must stay based on the latest user prompt and universalSubject.",
+        "rule": (
+            "Template controls only layout structure. "
+            "Subject, text, media and brand must stay based on the "
+            "latest user prompt and universalSubject."
+        ),
     }

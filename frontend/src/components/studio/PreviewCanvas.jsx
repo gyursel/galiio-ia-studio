@@ -1,6 +1,6 @@
 import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
 import { Wand2, RefreshCw, MousePointer2, X } from "lucide-react";
-import { injectEditorScript } from "@/lib/iframeEditor";
+import { injectEditorScript, EDITOR_INJECT_SCRIPT } from "@/lib/iframeEditor";
 import PremiumWebsiteRenderer from "@/components/studio/PremiumWebsiteRenderer";
 import UniversalVisualEditOverlay from "@/components/studio/UniversalVisualEditOverlay";
 
@@ -11,7 +11,7 @@ const DEVICE_SIZES = {
 };
 
 const PreviewCanvas = forwardRef(function PreviewCanvas(
-  { html, css, js, projectState, device, generating, editing, selectedId, onSelectionChange, onElementUpdate, onSerialize },
+  { html, css, js, projectState, projectId, activePath, device, generating, editing, selectedId, onSelectionChange, onElementUpdate, onSerialize },
   ref
 ) {
   const iframeRef = useRef(null);
@@ -45,21 +45,56 @@ ${rawHtml}
       if (msg.type === "galio:selected") {
         onSelectionChange?.(msg.payload);
       } else if (msg.type === "galio:serialized") {
-        onSerialize?.(msg.payload?.html);
+        onSerialize?.(msg.payload?.html || null);
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [onSelectionChange, onSerialize]);
 
-  // Toggle edit mode in iframe
+  // Inject editor script into /preview/ src iframes and toggle edit mode.
+  // For srcDoc iframes the script is already baked in via injectEditorScript.
+  const isRemoteIframe = Boolean(projectState && !customCode);
+
   useEffect(() => {
-    if (!iframeRef.current?.contentWindow) return;
-    iframeRef.current.contentWindow.postMessage(
-      { type: editing ? "galio:enable" : "galio:disable" },
-      "*"
-    );
-  }, [editing, srcDoc]);
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    if (isRemoteIframe) {
+      // The /preview/ route renders a full page — we can't inject via srcDoc.
+      // Instead we wait for the page to load, then eval the editor script via
+      // a postMessage that the preview page's service-worker / host picks up,
+      // OR we use iframe.contentWindow directly (same-origin only).
+      const injectAndToggle = () => {
+        try {
+          const win = iframe.contentWindow;
+          if (!win) return;
+          // Inject if not already present
+          if (!win.__galioEditorInjected) {
+            win.eval(EDITOR_INJECT_SCRIPT);
+          }
+          win.postMessage({ type: editing ? "galio:enable" : "galio:disable" }, "*");
+        } catch (e) {
+          // Cross-origin: fall back to postMessage only (script must be in the preview route)
+          iframe.contentWindow?.postMessage(
+            { type: editing ? "galio:enable" : "galio:disable" },
+            "*"
+          );
+        }
+      };
+
+      // Re-inject on every load (renderer style change remounts the iframe via key)
+      iframe.addEventListener("load", injectAndToggle);
+      injectAndToggle(); // also try immediately if already loaded
+      return () => iframe.removeEventListener("load", injectAndToggle);
+    } else {
+      // srcDoc iframe — script is already injected, just toggle
+      iframe.contentWindow?.postMessage(
+        { type: editing ? "galio:enable" : "galio:disable" },
+        "*"
+      );
+    }
+  }, [editing, srcDoc, isRemoteIframe]);
 
   const refresh = () => {
     if (iframeRef.current) {
@@ -150,25 +185,15 @@ ${rawHtml}
                 className="w-full h-full border-0"
               />
             ) : projectState ? (
-              <div
-                ref={previewRootRef}
-                className="relative w-full h-full overflow-auto bg-black"
+              <iframe
+                ref={iframeRef}
+                key={`${projectId}-${activePath}-${projectState?.rendererStyle}`}
+                title="preview"
                 data-testid="react-preview"
-              >
-                <PremiumWebsiteRenderer
-                  website={projectState}
-                  editing={editing}
-                  selectedId={selectedId}
-                  onSelect={onSelectionChange}
-                  onUpdate={onElementUpdate}
-                />
-                <UniversalVisualEditOverlay
-                  rootRef={previewRootRef}
-                  editing={editing}
-                  selectedId={selectedId}
-                  onElementUpdate={onElementUpdate}
-                />
-              </div>
+                src={`/preview/${projectId}?path=${encodeURIComponent(activePath || "/")}`}
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                className="w-full h-full border-0"
+              />
             ) : (
               <iframe
                 ref={iframeRef}

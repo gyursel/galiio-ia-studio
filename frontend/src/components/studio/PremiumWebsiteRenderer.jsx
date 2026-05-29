@@ -57,6 +57,10 @@ function applyVisualOverrides(website) {
   const next = cloneValue(website || {});
   const overrides = next.overrides || {};
 
+  // Collect all style/class overrides into a lookup the renderers can read.
+  // Renderers should spread `styleOverrides[elementId]` onto their elements.
+  const styleOverrides = {};
+
   for (const [id, patch] of Object.entries(overrides)) {
     if (!id || !patch || typeof patch !== "object") continue;
 
@@ -68,7 +72,25 @@ function applyVisualOverrides(website) {
     if (typeof patch.mediaUrl === "string") {
       setNestedValue(next, id, patch.mediaUrl);
     }
+
+    // Collect styles and classes so renderers can apply them per-element.
+    if (patch.styles && typeof patch.styles === "object") {
+      styleOverrides[id] = styleOverrides[id] || {};
+      styleOverrides[id].styles = { ...(styleOverrides[id]?.styles || {}), ...patch.styles };
+    }
+
+    if (typeof patch.classes === "string") {
+      styleOverrides[id] = styleOverrides[id] || {};
+      styleOverrides[id].classes = patch.classes;
+    }
+
+    if (typeof patch.mediaType === "string") {
+      styleOverrides[id] = styleOverrides[id] || {};
+      styleOverrides[id].mediaType = patch.mediaType;
+    }
   }
+
+  next.styleOverrides = styleOverrides;
 
   return next;
 }
@@ -81,5 +103,5 @@ export default function PremiumWebsiteRenderer(props) {
 
   const Renderer = getPremiumRenderer(websiteWithOverrides?.rendererStyle);
 
-  return <Renderer {...props} website={websiteWithOverrides} />;
+  return <div style={{width:"100%",maxWidth:"100%",overflowX:"hidden"}}><Renderer {...props} website={websiteWithOverrides} /></div>;
 }
