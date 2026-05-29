@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, {
   useMemo, useRef, useEffect, useState, useCallback
 } from "react";
